@@ -1,7 +1,9 @@
 /**
+ * A small CRC32 checksum tool using zlib's crc32() function
+ *
  * Compile with
- *   gcc -Wall -O3 -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN -Izlib -c -o crc32.o zlib/crc32.c
- *   gcc -Wall -O3 -Izlib crc32_check.c -s -o crc32_check crc32.o
+ *   gcc -Wall -O3 -march=native -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN -Izlib -c -o crc32.o zlib/crc32.c
+ *   gcc -Wall -O3 -march=native -Izlib crc32_check.c -s -o crc32_check crc32.o
  * or
  *   gcc -Wall -O3 crc32_check.c -s -o crc32_check -lz
  */
@@ -38,8 +40,8 @@ void progress(uInt n)
 static inline
 void perror_wrapper(char *ch)
 {
-  char error[256];
-  snprintf(error, 255, "%s: %s", self, ch);
+  char error[4352];
+  snprintf(error, 4351, "%s: %s", self, ch);
   perror(error);
 }
 
@@ -47,7 +49,7 @@ long get_crc32(char *file)
 {
   FILE *fp;
   uLong crc;
-  char buf[4096];
+  char buf[262144]; /* 256k */
   long fileSize = 0L;
   long byteCount = 0L;
   uInt completed = 0;
@@ -150,36 +152,33 @@ void crc_check(char *file)
       sprintf(crc_lower, "%.8lx", crc);
 
       /* check if the filename contains the checksum */
-      const char *match = "     ";
+      char *match;
       if (file != NULL && (strstr(basename(file), crc_upper) != NULL ||
                            strstr(basename(file), crc_lower) != NULL))
       {
-        match = "MATCH";
+        match = "OK";
       }
-      printf("%s %s %s\n", match, crc_upper, file);
+      else
+      {
+        match = "--";
+      }
+      printf("%s %s %s\n", crc_upper, match, file);
     }
   }
 }
 
 int main(int argc, char *argv[])
 {
-  self = argv[0];
+  self = basename(argv[0]);
 
-  if (argc == 1 || (argc == 2 && strcmp(argv[1], "--help") == 0))
-  {
-    printf("usage:\n");
-    printf("  %s files\n", self);
-    printf("  %s -\n", self);
-    return 1;
-  }
-  else if (argc == 2 && strcmp(argv[1], "-") == 0)
+  if (argc == 1)
   {
     /* read from stdin */
     crc_check(NULL);
   }
   else
   {
-    /* process list of input */
+    /* process list of input files */
     for (int i = 1; i < argc; ++i)
     {
       crc_check(argv[i]);
