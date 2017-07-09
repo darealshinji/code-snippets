@@ -153,8 +153,7 @@ void crc_check(char *file)
 
       /* check if the filename contains the checksum */
       char *match;
-      if (file != NULL && (strstr(basename(file), crc_upper) != NULL ||
-                           strstr(basename(file), crc_lower) != NULL))
+      if (strstr(basename(file), crc_upper) != NULL || strstr(basename(file), crc_lower) != NULL)
       {
         match = "OK";
       }
