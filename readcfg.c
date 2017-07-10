@@ -10,6 +10,37 @@ height:1080
 contrast:1.3
 ***/
 
+
+/******************** config *********************/
+
+/* INIT_XX ( variable, defaultValue ) */
+#define CFG_INIT \
+  INIT_CH(  label,       "This is a label"   ) \
+  INIT_DB(  width,       1280                ) \
+  INIT_DB(  height,      720                 ) \
+  INIT_DB(  contrast,    1.0                 )
+
+/* SCAN_XX ( variable )
+ * SCAN_END */
+#define CFG_SCAN \
+  SCAN_CH(  label     ) \
+  SCAN_DB(  width     ) \
+  SCAN_DB(  height    ) \
+  SCAN_DB(  contrast  ) \
+  SCAN_END
+
+/* DFLT_CH ( variable )
+ * DFLT_DB ( variable, condition )
+ * DFLT_DB_OR ( variable, condition, condition ) */
+#define CFG_DEFAULT \
+  DFLT_CH   (  label                        ) \
+  DFLT_DB   (  width,       <10             ) \
+  DFLT_DB   (  height,      <10             ) \
+  DFLT_DB_OR(  contrast,    <0.0, >=2.0     )
+
+/*************************************************/
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,78 +55,52 @@ contrast:1.3
 #define STRINGIFY_(x)  #x
 
 /* initialize [const char] var and its default value [const char] def */
-#define INIT_CHAR(var, def) \
+#define INIT_CH(var, def) \
   static const char *var = NULL; \
   static const char *var##Def = def; \
   static const char *var##Left = STRINGIFY(var) DELIM;
 
 /* initialize [double] var and its default value [const double] def */
-#define INIT_DOUBLE(var, def) \
+#define INIT_DB(var, def) \
   static double var = 0; \
   static const double var##Def = def; \
   static int var##Set = 0; \
   static const char *var##Left = STRINGIFY(var) DELIM;
 
 /* set [const char] var if the config line declares it */
-#define LINE_HAS_CHAR(var) \
+#define SCAN_CH(var) \
   if (strncmp(line, var##Left, len=strlen(var##Left)) == 0) { \
     var = strdup(line + len); \
-  }
+  } else
 
 /* set [double] var if the config line declares it */
-#define LINE_HAS_DOUBLE(var) \
+#define SCAN_DB(var) \
   if (strncmp(line, var##Left, len=strlen(var##Left)) == 0) { \
     var = atof(line + len); \
     var##Set = 1; \
-  }
+  } else
+
+/* append this to close a trailing "else" with brackets */
+#define SCAN_END  { }
 
 /* set [const char] var to default if var is empty */
-#define CHECK_CHAR_DEFAULT(var) \
+#define DFLT_CH(var) \
   if (var == NULL || strcmp(var, "") == 0) { \
     var = var##Def; \
   }
 
 /* set [double] var to default if (var check) returns true */
-#define CHECK_DOUBLE_DEFAULT(var, check) \
+#define DFLT_DB(var, check) \
   if (var##Set == 0 || (var##Set == 1 && var check)) { \
     var = var##Def; \
   }
 
 /* set [double] var to default if (var checkA) returns true
  * or (var checkB) returns true */
-#define CHECK_DOUBLE_DEFAULT_OR(var, checkA, checkB) \
+#define DFLT_DB_OR(var, checkA, checkB) \
   if (var##Set == 0 || (var##Set == 1 && (var checkA || var checkB))) { \
     var = var##Def; \
   }
-
-/* how to set the required macros INIT_VALUES, SCAN_LINES and CHECK_DEFAULT_VALUES */
-// #define INIT_VALUES  <init_macro> <init_macro> ...
-// #define SCAN_LINES  <line_macro> else <line_macro> else ... <line_macro>
-// #define CHECK_DEFAULT_VALUES  <check_macro> <check_macro> ...
-
-
-
-/******************** config *********************/
-#define INIT_VALUES                               \
-  INIT_CHAR   (label,    "This is a label")       \
-  INIT_DOUBLE (width,    1280)                    \
-  INIT_DOUBLE (height,   720)                     \
-  INIT_DOUBLE (contrast, 1.0)
-
-#define SCAN_LINES \
-  LINE_HAS_CHAR        (label)                    \
-  else LINE_HAS_DOUBLE (width)                    \
-  else LINE_HAS_DOUBLE (height)                   \
-  else LINE_HAS_DOUBLE (contrast)
-
-#define CHECK_DEFAULT_VALUES                      \
-  CHECK_CHAR_DEFAULT      (label)                 \
-  CHECK_DOUBLE_DEFAULT    (width, <10)            \
-  CHECK_DOUBLE_DEFAULT    (height, <10)           \
-  CHECK_DOUBLE_DEFAULT_OR (contrast, <0.0, >=2.0)
-/*************************************************/
-
-
 
 /* error codes */
 enum {
@@ -106,7 +111,7 @@ enum {
 };
 
 /* initialize global values */
-INIT_VALUES;
+CFG_INIT
 
 int readcfg(const char *file)
 {
@@ -165,7 +170,7 @@ int readcfg(const char *file)
         len = strlen(line);
 
         /* split at first delimiter found and get value */
-        SCAN_LINES;
+        CFG_SCAN
       }
     }
 
@@ -174,7 +179,7 @@ int readcfg(const char *file)
   }
 
   /* set default values if needed */
-  CHECK_DEFAULT_VALUES;
+  CFG_DEFAULT
 
   return rv;
 }
