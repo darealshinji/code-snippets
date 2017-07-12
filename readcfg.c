@@ -85,20 +85,20 @@ contrast:1.3
 
 /* set [const char] var to default if var is empty */
 #define DFLT_CH(var) \
-  if (var == NULL || strcmp(var, "") == 0) { \
+  if (var == NULL || strlen(var) == 0) { \
     var = var##Def; \
   }
 
 /* set [double] var to default if (var check) returns true */
 #define DFLT_DB(var, check) \
-  if (var##Set == 0 || (var##Set == 1 && var check)) { \
+  if (var##Set == 0 || (var check)) { \
     var = var##Def; \
   }
 
 /* set [double] var to default if (var checkA) returns true
  * or (var checkB) returns true */
 #define DFLT_DB_OR(var, checkA, checkB) \
-  if (var##Set == 0 || (var##Set == 1 && (var checkA || var checkB))) { \
+  if (var##Set == 0 || ((var checkA) || (var checkB))) { \
     var = var##Def; \
   }
 
