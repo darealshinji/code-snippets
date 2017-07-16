@@ -18,12 +18,17 @@ enum {
 pid_t copy_file_start(const char *source, const char *dest, int flags)
 {
   const char *opts;
-  pid_t pid = 0;
+  pid_t pid, cf_err = 0;
 
-  if (source == NULL || strlen(source) == 0 ||
-      dest == NULL || strlen(dest) == 0)
+  if (source == NULL || strlen(source) == 0 || dest == NULL || strlen(dest) == 0)
   {
-    return pid;
+    return cf_err;
+  }
+
+  /* source does not exist */
+  if (access(source, F_OK) != 0)
+  {
+    return cf_err;
   }
 
   /* target exists */
@@ -32,18 +37,19 @@ pid_t copy_file_start(const char *source, const char *dest, int flags)
     if (!((flags & CP_TARGETDIR) || (flags & CP_FORCE)))
     {
       /* we didn't set CP_TARGETDIR or CP_FORCE */
-      return pid;
+      return cf_err;
     }
     else if ((flags & CP_TARGETDIR) && !(flags & CP_FORCE))
     {
-      /* we set CP_TARGETDIR but NOT CP_FORCE */
+      /* we set CP_TARGETDIR but not CP_FORCE */
       char *source_base = basename((char *)source);
       char target_dest[strlen(dest) + strlen(source_base) + 2];
       sprintf(target_dest, "%s/%s", dest, source_base);
 
+      /* path already exists inside targetdir */
       if (access(target_dest, F_OK) == 0)
       {
-        return pid;
+        return cf_err;
       }
     }
   }
@@ -80,8 +86,7 @@ int get_pid_status_simple(pid_t pid)
 {
   int status;
 
-  if (pid > 0 && waitpid(pid, &status, 0) > 0 &&
-      WIFEXITED(status) == 1 && WEXITSTATUS(status) == 0)
+  if (pid > 0 && waitpid(pid, &status, 0) > 0 && WIFEXITED(status) == 1 && WEXITSTATUS(status) == 0)
   {
     return 0;
   }
@@ -89,21 +94,24 @@ int get_pid_status_simple(pid_t pid)
 }
 
 /* simple file copying function */
-int copy_file(const char *source, const char *dest, int flags)
-{
-  pid_t pid = copy_file_start(source, dest, flags);
-  return get_pid_status_simple(pid);
-}
+#define copy_file(source,dest,flags)  get_pid_status_simple(copy_file_start(source, dest, flags))
+//int copy_file(const char *source, const char *dest, int flags)
+//{
+//  return get_pid_status_simple(copy_file_start(source, dest, flags));
+//}
 
 int main(void)
 {
   /*
-  pid_t pid = copy_file_start("source", "dest", 0);
+  pid_t pid = copy_file_start("source", "dest", CP_DIR);
   printf("pid: %d\n", (int)pid);
-  int status = get_pid_status_simple(pid);
-  printf("pid returned status: %d\n", status);
+  if (pid > 0)
+  {
+    int status = get_pid_status_simple(pid);
+    printf("pid returned status: %d\n", status);
+  }
   return 0;
   */
-  return copy_file("source", "dest/", CP_FORCE|CP_TARGETDIR);
+  return copy_file("source", "dest/", CP_DIR);
 }
 
