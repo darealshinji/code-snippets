@@ -10,11 +10,8 @@
 char *getSelfExe()
 {
   char buf[PATH_MAX];
-  const char *path;
-  ssize_t size;
 
-  path = "/proc/self/exe";
-  size = readlink(path, buf, PATH_MAX);
+  ssize_t size = readlink("/proc/self/exe", buf, PATH_MAX);
 
   if (size == -1)
   {
