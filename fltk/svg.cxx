@@ -86,13 +86,14 @@ Fl_RGB_Image *__svg_to_rgb2(const char *filename, const char *xml_data, unsigned
   {
     w = (int)nsvg->width;
     h = (int)nsvg->height;
+    len = w*h*4;
     rast = nsvgCreateRasterizer();
-    data = (unsigned char *)malloc(w*h*4);
-    data_copy = (unsigned char *)malloc(w*h*4);
+    data = (unsigned char *)malloc(len);
+    data_copy = (unsigned char *)malloc(len);
     if (data && data_copy)
     {
       nsvgRasterize(rast, nsvg, 0, 0, 1, data_copy, w, h, w*4);
-      memcpy(data, data_copy, w*h*4);
+      memcpy(data, data_copy, len);
       rgb = new Fl_RGB_Image(data, w, h, 4, 0);
       free(data_copy);
     }
