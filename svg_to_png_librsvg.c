@@ -124,18 +124,18 @@ int svg_to_png_librsvg(const char *input, const char *output)
   LOAD_LIBRARY( h_gio,   "libgio-2.0.so.0",  dlclose(h_rsvg); dlclose(h_cairo) )
   LOAD_LIBRARY( h_glib,  "libglib-2.0.so.0", dlclose(h_rsvg); dlclose(h_cairo); dlclose(h_glib) )
 
-  LOAD_SYMBOL( h_rsvg,  RsvgHandle*,       rsvg_handle_new_from_stream_sync,  (GInputStream *, GFile *, cairo_status_t, GCancellable *, GError **) )
-  LOAD_SYMBOL( h_rsvg,  void,              rsvg_handle_get_dimensions,        (RsvgHandle *, RsvgDimensionData *) )
-  LOAD_SYMBOL( h_rsvg,  gboolean,          rsvg_handle_render_cairo,          (RsvgHandle *, cairo_t *) )
-  LOAD_SYMBOL( h_rsvg,  void,              rsvg_cleanup,                      (void) )
-  LOAD_SYMBOL( h_cairo, cairo_t*,          cairo_create,                      (cairo_surface_t *) )
-  LOAD_SYMBOL( h_cairo, void,              cairo_destroy,                     (cairo_t *) )
-  LOAD_SYMBOL( h_cairo, cairo_surface_t*,  cairo_image_surface_create,        (cairo_status_t, int, int) )
-  LOAD_SYMBOL( h_cairo, void,              cairo_surface_destroy,             (cairo_surface_t *) )
-  LOAD_SYMBOL( h_cairo, cairo_status_t,    cairo_surface_write_to_png_stream, (cairo_surface_t *, cairo_write_func_t, void *) )
-  LOAD_SYMBOL( h_gio,   GFile*,            g_file_new_for_path,               (const char *) )
-  LOAD_SYMBOL( h_gio,   GFileInputStream*, g_file_read,                       (GFile *, GCancellable *, GError **) )
-  LOAD_SYMBOL( h_glib,  void,              g_error_free,                      (GError *) )
+  LOAD_SYMBOL( h_rsvg,  RsvgHandle *,       rsvg_handle_new_from_stream_sync,  (GInputStream *, GFile *, cairo_status_t, GCancellable *, GError **) )
+  LOAD_SYMBOL( h_rsvg,  void,               rsvg_handle_get_dimensions,        (RsvgHandle *, RsvgDimensionData *) )
+  LOAD_SYMBOL( h_rsvg,  gboolean,           rsvg_handle_render_cairo,          (RsvgHandle *, cairo_t *) )
+  LOAD_SYMBOL( h_rsvg,  void,               rsvg_cleanup,                      (void) )
+  LOAD_SYMBOL( h_cairo, cairo_t *,          cairo_create,                      (cairo_surface_t *) )
+  LOAD_SYMBOL( h_cairo, void,               cairo_destroy,                     (cairo_t *) )
+  LOAD_SYMBOL( h_cairo, cairo_surface_t *,  cairo_image_surface_create,        (cairo_status_t, int, int) )
+  LOAD_SYMBOL( h_cairo, void,               cairo_surface_destroy,             (cairo_surface_t *) )
+  LOAD_SYMBOL( h_cairo, cairo_status_t,     cairo_surface_write_to_png_stream, (cairo_surface_t *, cairo_write_func_t, void *) )
+  LOAD_SYMBOL( h_gio,   GFile *,            g_file_new_for_path,               (const char *) )
+  LOAD_SYMBOL( h_gio,   GFileInputStream *, g_file_read,                       (GFile *, GCancellable *, GError **) )
+  LOAD_SYMBOL( h_glib,  void,               g_error_free,                      (GError *) )
 
   RsvgHandle *rsvg;
   RsvgDimensionData dimensions;
@@ -145,6 +145,7 @@ int svg_to_png_librsvg(const char *input, const char *output)
   GInputStream *stream;
   cairo_surface_t *surface;
   cairo_t *cr;
+  cairo_status_t save_status;
   int rv = 0;
 
   file = dl_g_file_new_for_path(input);
@@ -157,12 +158,19 @@ int svg_to_png_librsvg(const char *input, const char *output)
     return 1;
   }
 
-  output_file = fopen(output, "wb");
-  if (!output_file)
+  if (output == NULL)
   {
-    fprintf(stderr, "Error saving to file `%s'\n", output);
-    DLCLOSE_ALL
-    return 1;
+    output_file = stdout;
+  }
+  else
+  {
+    output_file = fopen(output, "wb");
+    if (!output_file)
+    {
+      fprintf(stderr, "Error saving to file `%s'\n", output);
+      DLCLOSE_ALL
+      return 1;
+    }
   }
 
   rsvg = dl_rsvg_handle_new_from_stream_sync(stream, file, 0, NULL, &error);
@@ -170,7 +178,7 @@ int svg_to_png_librsvg(const char *input, const char *output)
   {
     fprintf(stderr, "%s\n", error->message);
     dl_g_error_free(error);
-    fclose(output_file);
+    if (output) { fclose(output_file); }
     DLCLOSE_ALL
     return 1;
   }
@@ -179,12 +187,9 @@ int svg_to_png_librsvg(const char *input, const char *output)
   surface = dl_cairo_image_surface_create(0, dimensions.width, dimensions.height);
   cr = dl_cairo_create(surface);
   dl_rsvg_handle_render_cairo(rsvg, cr);
+  save_status = dl_cairo_surface_write_to_png_stream(surface, rsvg_cairo_write_func, output_file);
 
-  if (dl_cairo_surface_write_to_png_stream(surface, rsvg_cairo_write_func, output_file) == 0)
-  {
-    printf("Saved to file `%s'\n", output);
-  }
-  else
+  if (output && save_status == 1)
   {
     fprintf(stderr, "Error saving to file `%s'\n", output);
     rv = 1;
@@ -193,7 +198,7 @@ int svg_to_png_librsvg(const char *input, const char *output)
   dl_cairo_destroy(cr);
   dl_cairo_surface_destroy(surface);
   dl_rsvg_cleanup();
-  fclose(output_file);
+  if (output) { fclose(output_file); }
   DLCLOSE_ALL
 
   return rv;
@@ -203,6 +208,7 @@ int main(void)
 {
   const char *in = "fltk/Applications-multimedia.svg";
   const char *out = "Applications-multimedia.png";
+  //const char *out = NULL;  // NULL = stdout
   return svg_to_png_librsvg(in, out);
 }
 
