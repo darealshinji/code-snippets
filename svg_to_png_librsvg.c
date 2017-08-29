@@ -145,6 +145,7 @@ int svg_to_png_librsvg(const char *input, const char *output)
   GInputStream *stream;
   cairo_surface_t *surface;
   cairo_t *cr;
+  int rv = 0;
 
   file = dl_g_file_new_for_path(input);
   stream = (GInputStream *)dl_g_file_read(file, NULL, &error);
@@ -186,6 +187,7 @@ int svg_to_png_librsvg(const char *input, const char *output)
   else
   {
     fprintf(stderr, "Error saving to file `%s'\n", output);
+    rv = 1;
   }
 
   dl_cairo_destroy(cr);
@@ -194,7 +196,7 @@ int svg_to_png_librsvg(const char *input, const char *output)
   fclose(output_file);
   DLCLOSE_ALL
 
-  return 0;
+  return rv;
 }
 
 int main(void)
