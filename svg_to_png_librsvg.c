@@ -2,6 +2,11 @@
 // gcc -Wall -O2 $(pkg-config --cflags librsvg-2.0 cairo gio-2.0 glib-2.0) svg_to_png_librsvg.c -o svg_to_png_librsvg -s -lrsvg-2 -lcairo -lgio-2.0 -lglib-2.0 -lpthread
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #ifdef USE_DLOPEN
 
@@ -105,17 +110,43 @@ struct _RsvgDimensionData { int width; int height; gdouble em; gdouble ex; };
 
 #endif  // USE_DLOPEN
 
+int pipefd[2];
+char *svg_to_png_librsvg_buffer = NULL;
+ssize_t svg_to_png_librsvg_buffer_length = 0;
+
+#define SVG_TO_PNG_LIBRSVG_COPY(buffer, length) \
+  buffer = (char *)malloc(svg_to_png_librsvg_buffer_length); \
+  length = svg_to_png_librsvg_buffer_length; \
+  memcpy(buffer, svg_to_png_librsvg_buffer, length);
+
+void svg_to_png_librsvg_free(void *buffer)
+{
+  if (buffer)
+  {
+    free(buffer);
+  }
+}
+
+void svg_to_png_librsvg_free_global(void)
+{
+  if (svg_to_png_librsvg_buffer)
+  {
+    free(svg_to_png_librsvg_buffer);
+    svg_to_png_librsvg_buffer = NULL;
+  }
+  svg_to_png_librsvg_buffer_length = 0;
+}
 
 static cairo_status_t rsvg_cairo_write_func(void *closure, const unsigned char *data, unsigned int length)
 {
-  if (fwrite(data, 1, length, (FILE *)closure) == length)
+  if (write(pipefd[1], data, length) == length)
   {
     return 0;
   }
   return 1;
 }
 
-int svg_to_png_librsvg(const char *input, const char *output)
+int svg_to_png_librsvg(const char *input)
 {
   INIT_DLOPEN
 
@@ -139,14 +170,17 @@ int svg_to_png_librsvg(const char *input, const char *output)
 
   RsvgHandle *rsvg;
   RsvgDimensionData dimensions;
-  FILE *output_file;
   GError *error;
   GFile *file;
   GInputStream *stream;
   cairo_surface_t *surface;
   cairo_t *cr;
-  cairo_status_t save_status;
-  int rv = 0;
+  cairo_status_t save_status = 1;
+  char buf;
+  char *png_buf = NULL;
+  ssize_t png_buf_length = 0;
+  ssize_t length = 0;
+  int rv = 1;
 
   file = dl_g_file_new_for_path(input);
   stream = (GInputStream *)dl_g_file_read(file, NULL, &error);
@@ -158,27 +192,11 @@ int svg_to_png_librsvg(const char *input, const char *output)
     return 1;
   }
 
-  if (output == NULL)
-  {
-    output_file = stdout;
-  }
-  else
-  {
-    output_file = fopen(output, "wb");
-    if (!output_file)
-    {
-      fprintf(stderr, "Error saving to file `%s'\n", output);
-      DLCLOSE_ALL
-      return 1;
-    }
-  }
-
   rsvg = dl_rsvg_handle_new_from_stream_sync(stream, file, 0, NULL, &error);
   if (error)
   {
     fprintf(stderr, "%s\n", error->message);
     dl_g_error_free(error);
-    if (output) { fclose(output_file); }
     DLCLOSE_ALL
     return 1;
   }
@@ -187,18 +205,62 @@ int svg_to_png_librsvg(const char *input, const char *output)
   surface = dl_cairo_image_surface_create(0, dimensions.width, dimensions.height);
   cr = dl_cairo_create(surface);
   dl_rsvg_handle_render_cairo(rsvg, cr);
-  save_status = dl_cairo_surface_write_to_png_stream(surface, rsvg_cairo_write_func, output_file);
 
-  if (output && save_status == 1)
+  if (pipe(pipefd) == -1)
   {
-    fprintf(stderr, "Error saving to file `%s'\n", output);
-    rv = 1;
+    perror("pipe()");
+    DLCLOSE_ALL
+    return 1;
+  }
+
+  pid_t cpid = fork();
+  if (cpid == -1)
+  {
+    perror("fork()");
+    DLCLOSE_ALL
+    return 1;
+  }
+
+  if (cpid == 0)
+  {
+    /* Child process */
+    close(pipefd[0]);
+    save_status = dl_cairo_surface_write_to_png_stream(surface, rsvg_cairo_write_func, NULL);
+    close(pipefd[1]);
+    _exit(save_status);
+  }
+  else
+  {
+    close(pipefd[1]);
+    while ((length = read(pipefd[0], &buf, 1)) > 0)
+    {
+      png_buf = (char *)realloc(png_buf, png_buf_length + length);
+      memcpy(png_buf + png_buf_length, &buf, length);
+      png_buf_length += length;
+    }
+    close(pipefd[0]);
+
+    svg_to_png_librsvg_free_global();
+    svg_to_png_librsvg_buffer = (char *)malloc(png_buf_length);
+    svg_to_png_librsvg_buffer_length = png_buf_length;
+    memcpy(svg_to_png_librsvg_buffer, png_buf, png_buf_length);
+    free(png_buf);
+
+    int wait_status;
+    wait(&wait_status);
+    if (wait_status == -1)
+    {
+      perror("wait()");
+    }
+    else
+    {
+      rv = 0;
+    }
   }
 
   dl_cairo_destroy(cr);
   dl_cairo_surface_destroy(surface);
   dl_rsvg_cleanup();
-  if (output) { fclose(output_file); }
   DLCLOSE_ALL
 
   return rv;
@@ -206,9 +268,20 @@ int svg_to_png_librsvg(const char *input, const char *output)
 
 int main(void)
 {
-  const char *in = "fltk/Applications-multimedia.svg";
-  const char *out = "Applications-multimedia.png";
-  //const char *out = NULL;  // NULL = stdout
-  return svg_to_png_librsvg(in, out);
+  int rv = 1;
+  char *buf = NULL;
+  ssize_t len = 0;
+
+  rv = svg_to_png_librsvg("fltk/Applications-multimedia.svg");
+  if (rv == 0)
+  {
+    SVG_TO_PNG_LIBRSVG_COPY(buf, len);
+    fwrite(buf, len, 1, stdout);
+    fflush(stdout);
+  }
+  svg_to_png_librsvg_free(buf);
+  svg_to_png_librsvg_free_global();
+
+  return rv;
 }
 
