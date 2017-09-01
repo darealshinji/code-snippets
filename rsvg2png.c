@@ -1,14 +1,65 @@
-// gcc -Wall -O2 -DUSE_DLOPEN svg_to_png_librsvg.c -o svg_to_png_librsvg -s -ldl
-// gcc -Wall -O2 $(pkg-config --cflags librsvg-2.0 cairo gio-2.0 glib-2.0) svg_to_png_librsvg.c -o svg_to_png_librsvg -s -lrsvg-2 -lcairo -lgio-2.0 -lglib-2.0 -lpthread
+/***
+Wrapper around librsvg. Converts svg to png image data and saves it into a buffer.
+
+
+Example implementation:
+
+  char *buffer = NULL;
+  ssize_t buffer_size = 0;
+  if (rsvg2png_from_file("file.svg") == 0) {
+    rsvg2png_copy(buffer, buffer_size);
+  }
+  // ...
+  rsvg2png_free(buffer);
+  rsvg2png_free_global();
+
+
+Compile:
+
+  gcc -Wall -O2 -DRSVG2PNG_IMPLEMENTATION -DRSVG2PNG_DLOPEN -DRSVG2PNG_TEST \
+    rsvg2png.c -o rsvg2png -s -ldl
+
+  gcc -Wall -O2 -DRSVG2PNG_IMPLEMENTATION -DRSVG2PNG_TEST $(pkg-config --cflags librsvg-2.0 cairo gio-2.0 glib-2.0) \
+    rsvg2png.c -o rsvg2png -s -lrsvg-2 -lcairo -lgio-2.0 -lglib-2.0 -lpthread
+
+***/
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#include <sys/types.h>  // ssize_t
+
+extern char *rsvg2png_buffer;
+extern ssize_t rsvg2png_buffer_length;
+
+int rsvg2png(const char *input_file, const char *input_data);
+#define rsvg2png_from_file(x)  rsvg2png(x, NULL)
+#define rsvg2png_from_data(x)  rsvg2png(NULL, x)
+
+#define rsvg2png_copy(buffer, length) \
+  buffer = (char *)malloc(rsvg2png_buffer_length); \
+  length = rsvg2png_buffer_length; \
+  memcpy(buffer, rsvg2png_buffer, length);
+
+#define rsvg2png_free(x)  if (x) { free(x); }
+void rsvg2png_free_global(void);
+
+#ifdef __cplusplus
+}
+#endif
+
+
+#ifdef RSVG2PNG_IMPLEMENTATION
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
-#ifdef USE_DLOPEN
+// dlopen() required libraries
+#ifdef RSVG2PNG_DLOPEN
 
 #include <dlfcn.h>
 
@@ -49,7 +100,7 @@ struct _GCancellable { GObject parent_instance; GCancellablePrivate *priv; };
 // cairo typedefs
 typedef struct _cairo cairo_t;
 typedef struct _cairo_surface cairo_surface_t;
-typedef size_t cairo_status_t;  // actually an enum
+typedef int cairo_status_t;  // actually an enum
 typedef cairo_status_t (*cairo_write_func_t) (void *closure, const unsigned char *data, unsigned int length);
 
 // rsvg typedefs
@@ -111,32 +162,24 @@ struct _RsvgDimensionData { int width; int height; gdouble em; gdouble ex; };
 #define dl_g_file_read g_file_read
 #define dl_g_error_free g_error_free
 
-#endif  // USE_DLOPEN
+#endif  // RSVG2PNG_DLOPEN
 
-char *svg_to_png_librsvg_buffer = NULL;
-ssize_t svg_to_png_librsvg_buffer_length = 0;
 
-#define svg_to_png_librsvg_copy(buffer, length) \
-  buffer = (char *)malloc(svg_to_png_librsvg_buffer_length); \
-  length = svg_to_png_librsvg_buffer_length; \
-  memcpy(buffer, svg_to_png_librsvg_buffer, length);
+char *rsvg2png_buffer = NULL;
+ssize_t rsvg2png_buffer_length = 0;
 
-#define svg_to_png_librsvg_free(x)       if (x) { free(x); }
-#define svg_to_png_librsvg_from_file(x)  svg_to_png_librsvg(x, NULL)
-#define svg_to_png_librsvg_from_data(x)  svg_to_png_librsvg(NULL, x)
-
-void svg_to_png_librsvg_free_global(void)
+void rsvg2png_free_global(void)
 {
-  if (svg_to_png_librsvg_buffer)
+  if (rsvg2png_buffer)
   {
-    free(svg_to_png_librsvg_buffer);
-    svg_to_png_librsvg_buffer = NULL;
+    free(rsvg2png_buffer);
+    rsvg2png_buffer = NULL;
   }
-  svg_to_png_librsvg_buffer_length = 0;
+  rsvg2png_buffer_length = 0;
 }
 
 static inline
-cairo_status_t rsvg_cairo_write_func(void *closure, const unsigned char *data, unsigned int length)
+cairo_status_t rsvg2png_cairo_write_func(void *closure, const unsigned char *data, unsigned int length)
 {
   int *pipefd = (int *)closure;
   if (write(pipefd[1], data, length) == length)
@@ -146,7 +189,7 @@ cairo_status_t rsvg_cairo_write_func(void *closure, const unsigned char *data, u
   return 1;
 }
 
-int svg_to_png_librsvg(const char *input_file, const char *input_data)
+int rsvg2png(const char *input_file, const char *input_data)
 {
   INIT_DLOPEN
 
@@ -234,7 +277,7 @@ int svg_to_png_librsvg(const char *input_file, const char *input_data)
   {
     /* Child process */
     close(pipefd[0]);
-    save_status = dl_cairo_surface_write_to_png_stream(surface, rsvg_cairo_write_func, pipefd);
+    save_status = dl_cairo_surface_write_to_png_stream(surface, rsvg2png_cairo_write_func, pipefd);
     close(pipefd[1]);
     _exit(save_status);
   }
@@ -249,10 +292,10 @@ int svg_to_png_librsvg(const char *input_file, const char *input_data)
     }
     close(pipefd[0]);
 
-    svg_to_png_librsvg_free_global();
-    svg_to_png_librsvg_buffer = (char *)malloc(png_buf_length);
-    svg_to_png_librsvg_buffer_length = png_buf_length;
-    memcpy(svg_to_png_librsvg_buffer, png_buf, png_buf_length);
+    rsvg2png_free_global();
+    rsvg2png_buffer = (char *)malloc(png_buf_length);
+    rsvg2png_buffer_length = png_buf_length;
+    memcpy(rsvg2png_buffer, png_buf, png_buf_length);
     free(png_buf);
 
     int wait_status;
@@ -275,12 +318,20 @@ int svg_to_png_librsvg(const char *input_file, const char *input_data)
   return rv;
 }
 
+#endif  // RSVG2PNG_IMPLEMENTATION
+
+
+#ifdef RSVG2PNG_TEST
+
 int main(void)
 {
   int rv = 1;
   char *buf = NULL;
   ssize_t len = 0;
 
+  /* https://commons.wikimedia.org/wiki/Tango_icons
+   * https://jakearchibald.github.io/svgomg/
+   */
   const char *svg_data = /* Applications-other.svg */
   "<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' width='48' height='48'><defs><linearG"
   "radient id='c'><stop offset='0' stop-color='#fff'/><stop offset='1' stop-color='#fff' stop-opacity='0'/></linearGradient"
@@ -309,17 +360,19 @@ int main(void)
   "ity='.5' fill='#fff'/><path d='M24.286 41.605l-18.32-18.32 18.32-18.32 18.32 18.32-18.32 18.32z' fill='none' stroke='url"
   "(#f)' opacity='.473'/></svg>";
 
-  //rv = svg_to_png_librsvg_from_file("fltk/Applications-multimedia.svg");
-  rv = svg_to_png_librsvg_from_data(svg_data);
+  //rv = rsvg2png_from_file("fltk/Applications-multimedia.svg");
+  rv = rsvg2png_from_data(svg_data);
   if (rv == 0)
   {
-    svg_to_png_librsvg_copy(buf, len);
+    rsvg2png_copy(buf, len);
     fwrite(buf, len, 1, stdout);
     fflush(stdout);
   }
-  svg_to_png_librsvg_free(buf);
-  svg_to_png_librsvg_free_global();
+  rsvg2png_free(buf);
+  rsvg2png_free_global();
 
   return rv;
 }
+
+#endif  // RSVG2PNG_TEST
 
