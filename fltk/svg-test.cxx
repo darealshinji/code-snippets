@@ -3,27 +3,16 @@
 #include <FL/Fl_Tiled_Image.H>
 #include <FL/Fl_Double_Window.H>
 
-#include <stdlib.h>
-#include <string.h>
+#include "Fl_SVG_Image.cxx"
 
-#define NANOSVG_IMPLEMENTATION
-#include "nanosvg.h"
-#define NANOSVGRAST_IMPLEMENTATION
-#include "nanosvgrast.h"
+#include <stdio.h>
 
 
-/* read from file */
-Fl_RGB_Image *svg_to_rgb(const char *filename);
-
-/* read from string */
-Fl_RGB_Image *svg_to_rgb_raw(const char *xml_data);
-
-
-/* https://commons.wikimedia.org/wiki/Tango_icons
+/* Applications-other.svg from https://commons.wikimedia.org/wiki/Tango_icons
  * https://jakearchibald.github.io/svgomg/
  */
-#define SVG_FILENAME "Applications-multimedia.svg"
-const char *SVG_DATA = /* Applications-other.svg */
+const char *svg_data_name = "Applications-other.svg";
+char *svg_data = (char *)
   "<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' width='48' height='48'><defs><linearG"
   "radient id='c'><stop offset='0' stop-color='#fff'/><stop offset='1' stop-color='#fff' stop-opacity='0'/></linearGradient"
   "><linearGradient id='b'><stop offset='0' stop-color='#fcaf3e'/><stop offset='1' stop-color='#d37f03'/></linearGradient><"
@@ -52,92 +41,34 @@ const char *SVG_DATA = /* Applications-other.svg */
   "(#f)' opacity='.473'/></svg>";
 
 
-static inline
-Fl_RGB_Image *__svg_to_rgb2(const char *filename, const char *xml_data, unsigned char *data)
-{
-  const char *units = "px";
-  const float dpi = 96.0f;
-  NSVGimage *nsvg = NULL;
-  NSVGrasterizer *rast = NULL;
-  unsigned char *data_copy = NULL;
-  char *xml_data_copy = NULL;
-  Fl_RGB_Image *rgb = NULL;
-  size_t len = 0;
-  int w = 0;
-  int h = 0;
-
-  if (filename)
-  {
-    nsvg = nsvgParseFromFile(filename, units, dpi);
-  }
-  else
-  {
-    len = strlen(xml_data);
-    xml_data_copy = (char *)malloc(len);
-    if (xml_data_copy)
-    {
-      strncpy(xml_data_copy, xml_data, len);
-      nsvg = nsvgParse(xml_data_copy, units, dpi);
-      free(xml_data_copy);
-    }
-  }
-
-  if (nsvg)
-  {
-    w = (int)nsvg->width;
-    h = (int)nsvg->height;
-    len = w*h*4;
-    rast = nsvgCreateRasterizer();
-    data = (unsigned char *)malloc(len);
-    data_copy = (unsigned char *)malloc(len);
-    if (data && data_copy)
-    {
-      nsvgRasterize(rast, nsvg, 0, 0, 1, data_copy, w, h, w*4);
-      memcpy(data, data_copy, len);
-      rgb = new Fl_RGB_Image(data, w, h, 4, 0);
-      free(data_copy);
-    }
-    nsvgDeleteRasterizer(rast);
-    nsvgDelete(nsvg);
-  }
-
-  return rgb;
-}
-
-static inline
-Fl_RGB_Image *__svg_to_rgb(const char *filename, const char *xml_data)
-{
-  unsigned char *data = NULL;
-  Fl_RGB_Image *rgb = __svg_to_rgb2(filename, xml_data, data);
-  if (data) { free(data); }
-  return rgb;
-}
-
-Fl_RGB_Image *svg_to_rgb(const char *filename)
-{
-  return __svg_to_rgb(filename, NULL);
-}
-
-Fl_RGB_Image *svg_to_rgb_raw(const char *xml_data)
-{
-  return __svg_to_rgb(NULL, xml_data);
-}
-
-
 int main(int argc, char **argv)
 {
   Fl_Double_Window *win;
   Fl_Group *g;
-  Fl_RGB_Image *icon, *wp;
+  Fl_SVG_Image *icon, *wp;
+  char title[64];
   int winw = 640;
   int winh = 480;
 
-  icon = svg_to_rgb(SVG_FILENAME);
-  wp = svg_to_rgb_raw(SVG_DATA);
+  icon = new Fl_SVG_Image("Applications-multimedia.svg");
+  wp = new Fl_SVG_Image(NULL, svg_data, 0);
+
+  if (wp)
+  {
+    // calculate the scale to get 300px width
+    float scale = 300.0 / (float)wp->w();
+    delete wp;
+    wp = new Fl_SVG_Image(scale, svg_data_name, svg_data);
+    snprintf(title, 63, "SVG Test: %dx%d (%d%%)", wp->w(), wp->h(), (int)(wp->scale() * 100.0));
+  }
+  else
+  {
+    snprintf(title, 63, "SVG Test: unknown resolution");
+  }
 
   Fl_Window::default_icon(icon);
 
-  win = new Fl_Double_Window(winw, winh, "SVG Test");
+  win = new Fl_Double_Window(winw, winh, title);
   {
     g = new Fl_Group(0, 0, winw, winh);
     g->image(new Fl_Tiled_Image(wp));
