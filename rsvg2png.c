@@ -100,13 +100,15 @@ struct _GCancellable { GObject parent_instance; GCancellablePrivate *priv; };
 // cairo typedefs
 typedef struct _cairo cairo_t;
 typedef struct _cairo_surface cairo_surface_t;
-typedef int cairo_status_t;  // actually an enum
+typedef enum { CAIRO_STATUS_SUCCESS = 0, CAIRO_STATUS_WRITE_ERROR = 11 } cairo_status_t;
+typedef enum { CAIRO_FORMAT_ARGB32 = 0 } cairo_format_t;
 typedef cairo_status_t (*cairo_write_func_t) (void *closure, const unsigned char *data, unsigned int length);
 
 // rsvg typedefs
 typedef struct _RsvgHandle RsvgHandle;
 typedef struct  RsvgHandlePrivate RsvgHandlePrivate;
 typedef struct _RsvgDimensionData RsvgDimensionData;
+typedef enum { RSVG_HANDLE_FLAGS_NONE = 0 } RsvgHandleFlags;
 struct _RsvgHandle { GObject parent; RsvgHandlePrivate *priv; gpointer _abi_padding[15]; };
 struct _RsvgDimensionData { int width; int height; gdouble em; gdouble ex; };
 
@@ -184,9 +186,9 @@ cairo_status_t rsvg2png_cairo_write_func(void *closure, const unsigned char *dat
   int *pipefd = (int *)closure;
   if (write(pipefd[1], data, length) == length)
   {
-    return 0;
+    return CAIRO_STATUS_SUCCESS;
   }
-  return 1;
+  return CAIRO_STATUS_WRITE_ERROR;
 }
 
 int rsvg2png(const char *input_file, const char *input_data)
@@ -199,13 +201,13 @@ int rsvg2png(const char *input_file, const char *input_data)
   LOAD_LIBRARY( h_glib,  "libglib-2.0.so.0", dlclose(h_rsvg); dlclose(h_cairo); dlclose(h_glib) )
 
   LOAD_SYMBOL( h_rsvg,  RsvgHandle *,       rsvg_handle_new_from_data,         (const guint8 *, gsize, GError **) )
-  LOAD_SYMBOL( h_rsvg,  RsvgHandle *,       rsvg_handle_new_from_stream_sync,  (GInputStream *, GFile *, cairo_status_t, GCancellable *, GError **) )
+  LOAD_SYMBOL( h_rsvg,  RsvgHandle *,       rsvg_handle_new_from_stream_sync,  (GInputStream *, GFile *, RsvgHandleFlags, GCancellable *, GError **) )
   LOAD_SYMBOL( h_rsvg,  void,               rsvg_handle_get_dimensions,        (RsvgHandle *, RsvgDimensionData *) )
   LOAD_SYMBOL( h_rsvg,  gboolean,           rsvg_handle_render_cairo,          (RsvgHandle *, cairo_t *) )
   LOAD_SYMBOL( h_rsvg,  void,               rsvg_cleanup,                      (void) )
   LOAD_SYMBOL( h_cairo, cairo_t *,          cairo_create,                      (cairo_surface_t *) )
   LOAD_SYMBOL( h_cairo, void,               cairo_destroy,                     (cairo_t *) )
-  LOAD_SYMBOL( h_cairo, cairo_surface_t *,  cairo_image_surface_create,        (cairo_status_t, int, int) )
+  LOAD_SYMBOL( h_cairo, cairo_surface_t *,  cairo_image_surface_create,        (cairo_format_t, int, int) )
   LOAD_SYMBOL( h_cairo, void,               cairo_surface_destroy,             (cairo_surface_t *) )
   LOAD_SYMBOL( h_cairo, cairo_status_t,     cairo_surface_write_to_png_stream, (cairo_surface_t *, cairo_write_func_t, void *) )
   LOAD_SYMBOL( h_gio,   GFile *,            g_file_new_for_path,               (const char *) )
@@ -219,7 +221,7 @@ int rsvg2png(const char *input_file, const char *input_data)
   GInputStream *stream;
   cairo_surface_t *surface;
   cairo_t *cr;
-  cairo_status_t save_status = 1;
+  cairo_status_t save_status;
   int pipefd[2];
   char buf;
   char *png_buf = NULL;
@@ -242,7 +244,7 @@ int rsvg2png(const char *input_file, const char *input_data)
       DLCLOSE_ALL
       return 1;
     }
-    rsvg = dl_rsvg_handle_new_from_stream_sync(stream, file, 0, NULL, &error);
+    rsvg = dl_rsvg_handle_new_from_stream_sync(stream, file, RSVG_HANDLE_FLAGS_NONE, NULL, &error);
   }
 
   if (error)
@@ -254,7 +256,7 @@ int rsvg2png(const char *input_file, const char *input_data)
   }
 
   dl_rsvg_handle_get_dimensions(rsvg, &dimensions);
-  surface = dl_cairo_image_surface_create(0, dimensions.width, dimensions.height);
+  surface = dl_cairo_image_surface_create(CAIRO_FORMAT_ARGB32, dimensions.width, dimensions.height);
   cr = dl_cairo_create(surface);
   dl_rsvg_handle_render_cairo(rsvg, cr);
 
@@ -312,6 +314,7 @@ int rsvg2png(const char *input_file, const char *input_data)
 
   dl_cairo_destroy(cr);
   dl_cairo_surface_destroy(surface);
+  if (error) { dl_g_error_free(error); }
   dl_rsvg_cleanup();
   DLCLOSE_ALL
 
