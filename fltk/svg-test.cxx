@@ -40,13 +40,15 @@ char *svg_data = (char *)
   "ity='.5' fill='#fff'/><path d='M24.286 41.605l-18.32-18.32 18.32-18.32 18.32 18.32-18.32 18.32z' fill='none' stroke='url"
   "(#f)' opacity='.473'/></svg>";
 
+#define TITLE_MAX 64
+
 
 int main(int argc, char **argv)
 {
   Fl_Double_Window *win;
   Fl_Group *g;
   Fl_SVG_Image *icon, *wp;
-  char title[64];
+  char title[TITLE_MAX];
   int winw = 640;
   int winh = 480;
 
@@ -59,11 +61,11 @@ int main(int argc, char **argv)
     float scale = 300.0 / (float)wp->w();
     delete wp;
     wp = new Fl_SVG_Image(scale, svg_data_name, svg_data);
-    snprintf(title, 63, "SVG Test: %dx%d (%d%%)", wp->w(), wp->h(), (int)(wp->scale() * 100.0));
+    snprintf(title, TITLE_MAX - 1, "SVG test: %dx%d (%d%% zoom)", wp->w(), wp->h(), (int)(wp->scale_x() * 100.0));
   }
   else
   {
-    snprintf(title, 63, "SVG Test: unknown resolution");
+    snprintf(title, TITLE_MAX - 1, "SVG test: unknown resolution");
   }
 
   Fl_Window::default_icon(icon);

@@ -20,13 +20,16 @@ public:
 
   Fl_SVG_Image(float scale, const char *filename);
   Fl_SVG_Image(float scale, const char *name_svg, char *svg_data);
+  Fl_SVG_Image(float scale_x, float scale_y, const char *filename);
+  Fl_SVG_Image(float scale_x, float scale_y, const char *name_svg, char *svg_data);
 
 private:
-  float scale_;
+  float scale_x_, scale_y_;
   void load_svg_(const char *name_svg, char *svg_data, int rasterize);
 
 public:
-  float scale() {return scale_;}
+  float scale_x() {return scale_x_;}
+  float scale_y() {return scale_y_;}
 };
 
 #endif // !Fl_SVG_Image_H
