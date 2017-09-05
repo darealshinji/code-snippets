@@ -10,7 +10,7 @@
 Fl_SVG_Image::Fl_SVG_Image(const char *filename, int rasterize)
  : Fl_RGB_Image(0,0,0)
 {
-  w_ = h_ = 0;
+  w_ = h_ = -1;
   scale_x_ = scale_y_ = 1.0f;
   load_svg_(filename, NULL, rasterize);
 }
@@ -18,7 +18,7 @@ Fl_SVG_Image::Fl_SVG_Image(const char *filename, int rasterize)
 Fl_SVG_Image::Fl_SVG_Image(const char *name_svg, char *svg_data, int rasterize)
  : Fl_RGB_Image(0,0,0)
 {
-  w_ = h_ = 0;
+  w_ = h_ = -1;
   scale_x_ = scale_y_ = 1.0f;
   load_svg_(name_svg, svg_data, rasterize);
 }
@@ -26,7 +26,7 @@ Fl_SVG_Image::Fl_SVG_Image(const char *name_svg, char *svg_data, int rasterize)
 Fl_SVG_Image::Fl_SVG_Image(float scale, const char *filename)
  : Fl_RGB_Image(0,0,0)
 {
-  w_ = h_ = 0;
+  w_ = h_ = -1;
   scale_x_ = scale_y_ = scale;
   load_svg_(filename, NULL, 1);
 }
@@ -34,7 +34,7 @@ Fl_SVG_Image::Fl_SVG_Image(float scale, const char *filename)
 Fl_SVG_Image::Fl_SVG_Image(float scale, const char *name_svg, char *svg_data)
  : Fl_RGB_Image(0,0,0)
 {
-  w_ = h_ = 0;
+  w_ = h_ = -1;
   scale_x_ = scale_y_ = scale;
   load_svg_(name_svg, svg_data, 1);
 }
@@ -81,19 +81,39 @@ void Fl_SVG_Image::load_svg_(const char *name_svg, char *svg_data, int rasterize
   w_source_ = image->width;
   h_source_ = image->height;
 
-  if (w_ > 0) {
+  if (w_ == 0) {
+    /* keep original width */
+    width = w_source_;
+    scale_x_ = 1.0f;
+  } else if (w_ <= -1) {
+    /* set width automatically */
+    width = (scale_x_ > 0.0f) ? w_source_ * scale_x_ : -1;
+  } else {
     width = (float)w_;
     scale_x_ = width / w_source_;
-  } else {
-    scale_x_ = (scale_x_ <= 0.0f) ? 1.0f : scale_x_;
-    width = w_source_ * scale_x_;
   }
 
-  if (h_ > 0) {
+  if (h_ == 0) {
+    /* keep original height */
+    height = h_source_;
+    scale_y_ = 1.0f;
+  } else if (w_ <= -1) {
+    /* set height automatically */
+    height = (scale_y_ > 0.0f) ? h_source_ * scale_y_ : -1;
+  } else {
     height = (float)h_;
     scale_y_ = height / h_source_;
-  } else {
-    scale_y_ = (scale_y_ <= 0.0f) ? 1.0f : scale_y_;
+  }
+
+  if (width == -1 && height == -1) {
+    width = w_source_;
+    height = h_source_;
+    scale_y_ = scale_x_ = 1.0f;
+  } else if (width == -1) {
+    scale_x_ = scale_y_;
+    width = w_source_ * scale_x_;
+  } else if (height == -1) {
+    scale_y_ = scale_x_;
     height = h_source_ * scale_y_;
   }
 

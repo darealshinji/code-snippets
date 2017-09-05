@@ -20,8 +20,11 @@ public:
   Fl_SVG_Image(float scale, const char *filename);
   Fl_SVG_Image(float scale, const char *name_svg, char *svg_data);
   /**
-    To keep the original width or height, set W or H to 0 or a negative value.
-    Fl_SVG_Image(300,0,"test.svg) for example will stretch a 48x48 SVG to 300x48.
+    To keep the original width or height, set W or H to 0.
+    A negative value will stretch the width or height automatically to keep
+    the original aspect ratio.
+    Fl_SVG_Image(300,0,"test.svg) for example will stretch a 48x48 SVG to
+    300x48, Fl_SVG_Image(300,-1,"test.svg) will stretch it to 300x300.
   */
   Fl_SVG_Image(int W, int H, const char *filename);
   Fl_SVG_Image(int W, int H, const char *name_svg, char *svg_data);
