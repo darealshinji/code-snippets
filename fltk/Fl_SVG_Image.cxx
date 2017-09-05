@@ -10,6 +10,7 @@
 Fl_SVG_Image::Fl_SVG_Image(const char *filename, int rasterize)
  : Fl_RGB_Image(0,0,0)
 {
+  w_ = h_ = 0;
   scale_x_ = scale_y_ = 1.0f;
   load_svg_(filename, NULL, rasterize);
 }
@@ -17,6 +18,7 @@ Fl_SVG_Image::Fl_SVG_Image(const char *filename, int rasterize)
 Fl_SVG_Image::Fl_SVG_Image(const char *name_svg, char *svg_data, int rasterize)
  : Fl_RGB_Image(0,0,0)
 {
+  w_ = h_ = 0;
   scale_x_ = scale_y_ = 1.0f;
   load_svg_(name_svg, svg_data, rasterize);
 }
@@ -24,6 +26,7 @@ Fl_SVG_Image::Fl_SVG_Image(const char *name_svg, char *svg_data, int rasterize)
 Fl_SVG_Image::Fl_SVG_Image(float scale, const char *filename)
  : Fl_RGB_Image(0,0,0)
 {
+  w_ = h_ = 0;
   scale_x_ = scale_y_ = scale;
   load_svg_(filename, NULL, 1);
 }
@@ -31,23 +34,24 @@ Fl_SVG_Image::Fl_SVG_Image(float scale, const char *filename)
 Fl_SVG_Image::Fl_SVG_Image(float scale, const char *name_svg, char *svg_data)
  : Fl_RGB_Image(0,0,0)
 {
+  w_ = h_ = 0;
   scale_x_ = scale_y_ = scale;
   load_svg_(name_svg, svg_data, 1);
 }
 
-Fl_SVG_Image::Fl_SVG_Image(float scale_x, float scale_y, const char *filename)
+Fl_SVG_Image::Fl_SVG_Image(int W, int H, const char *filename)
  : Fl_RGB_Image(0,0,0)
 {
-  scale_x_ = scale_x;
-  scale_y_ = scale_y;
+  w_ = W; h_ = H;
+  scale_x_ = scale_y_ = 1.0f;
   load_svg_(filename, NULL, 1);
 }
 
-Fl_SVG_Image::Fl_SVG_Image(float scale_x, float scale_y, const char *name_svg, char *svg_data)
+Fl_SVG_Image::Fl_SVG_Image(int W, int H, const char *name_svg, char *svg_data)
  : Fl_RGB_Image(0,0,0)
 {
-  scale_x_ = scale_x;
-  scale_y_ = scale_y;
+  w_ = W; h_ = H;
+  scale_x_ = scale_y_ = 1.0f;
   load_svg_(name_svg, svg_data, 1);
 }
 
@@ -56,7 +60,7 @@ void Fl_SVG_Image::load_svg_(const char *name_svg, char *svg_data, int rasterize
   NSVGimage *image = NULL;
   NSVGrasterizer *r = NULL;
   const char *units = "px";
-  float dpi, scale_x, scale_y;
+  float dpi, width, height;
 
   dpi = 96.0f;
 
@@ -74,10 +78,27 @@ void Fl_SVG_Image::load_svg_(const char *name_svg, char *svg_data, int rasterize
     goto stop;
   }
 
-  scale_x = (scale_x_ <= 0.0f) ? 1.0f : scale_x_;
-  scale_y = (scale_y_ <= 0.0f) ? 1.0f : scale_y_;
-  w((int)(image->width * scale_x));
-  h((int)(image->height * scale_y));
+  w_source_ = image->width;
+  h_source_ = image->height;
+
+  if (w_ > 0) {
+    width = (float)w_;
+    scale_x_ = width / w_source_;
+  } else {
+    scale_x_ = (scale_x_ <= 0.0f) ? 1.0f : scale_x_;
+    width = w_source_ * scale_x_;
+  }
+
+  if (h_ > 0) {
+    height = (float)h_;
+    scale_y_ = height / h_source_;
+  } else {
+    scale_y_ = (scale_y_ <= 0.0f) ? 1.0f : scale_y_;
+    height = h_source_ * scale_y_;
+  }
+
+  w((int)width);
+  h((int)height);
   d(4);
 
   if (rasterize == 0) {
@@ -91,7 +112,7 @@ void Fl_SVG_Image::load_svg_(const char *name_svg, char *svg_data, int rasterize
   array = new uchar[w() * h() * d()];
   alloc_array = 1;
   r = nsvgCreateRasterizer();
-  nsvgRasterizeFull(r, image, 0, 0, scale_x, scale_y, (uchar *)array, w(), h(), w() * d());
+  nsvgRasterizeFull(r, image, 0, 0, scale_x_, scale_y_, (uchar *)array, w(), h(), w() * d());
 
 stop:
   if (image) { nsvgDelete(image); }

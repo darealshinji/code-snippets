@@ -17,19 +17,28 @@ public:
   */
   Fl_SVG_Image(const char *filename, int rasterize=1);
   Fl_SVG_Image(const char *name_svg, char *svg_data, int rasterize=1);
-
   Fl_SVG_Image(float scale, const char *filename);
   Fl_SVG_Image(float scale, const char *name_svg, char *svg_data);
-  Fl_SVG_Image(float scale_x, float scale_y, const char *filename);
-  Fl_SVG_Image(float scale_x, float scale_y, const char *name_svg, char *svg_data);
+  /**
+    To keep the original width or height, set W or H to 0 or a negative value.
+    Fl_SVG_Image(300,0,"test.svg) for example will stretch a 48x48 SVG to 300x48.
+  */
+  Fl_SVG_Image(int W, int H, const char *filename);
+  Fl_SVG_Image(int W, int H, const char *name_svg, char *svg_data);
 
 private:
-  float scale_x_, scale_y_;
+  int w_, h_;
+  float scale_x_, scale_y_, w_source_, h_source_;
   void load_svg_(const char *name_svg, char *svg_data, int rasterize);
 
 public:
   float scale_x() {return scale_x_;}
   float scale_y() {return scale_y_;}
+  /**
+    Return width and height set in the original SVG.
+  */
+  float w_source() {return w_source_;}
+  float h_source() {return h_source_;}
 };
 
 #endif // !Fl_SVG_Image_H
