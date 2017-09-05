@@ -76,7 +76,7 @@ int main(int argc, char **argv)
     g->image(new Fl_Tiled_Image(wp));
     g->end();
   }
-  win->position((Fl::w() - win->w()) / 2, (Fl::h() - win->h()) / 2);
+  win->position((Fl::w()-win->w())/2, (Fl::h()-win->h())/2);
   win->end();
   win->resizable(g);
   win->show(argc, argv);
