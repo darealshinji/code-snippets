@@ -61,6 +61,8 @@ void Fl_SVG_Image::load_svg_(const char *name_svg, char *svg_data, int rasterize
   NSVGrasterizer *r = NULL;
   const char *units = "px";
   float dpi, width, height;
+  bool autow = false;
+  bool autoh = false;
 
   dpi = 96.0f;
 
@@ -82,37 +84,33 @@ void Fl_SVG_Image::load_svg_(const char *name_svg, char *svg_data, int rasterize
   h_source_ = image->height;
 
   if (w_ == 0) {
-    /* keep original width */
     width = w_source_;
     scale_x_ = 1.0f;
   } else if (w_ <= -1) {
-    /* set width automatically */
-    width = (scale_x_ > 0.0f) ? w_source_ * scale_x_ : -1;
+    autow = true;
   } else {
     width = (float)w_;
     scale_x_ = width / w_source_;
   }
 
   if (h_ == 0) {
-    /* keep original height */
     height = h_source_;
     scale_y_ = 1.0f;
-  } else if (w_ <= -1) {
-    /* set height automatically */
-    height = (scale_y_ > 0.0f) ? h_source_ * scale_y_ : -1;
+  } else if (h_ <= -1) {
+    autoh = true;
   } else {
     height = (float)h_;
     scale_y_ = height / h_source_;
   }
 
-  if (width == -1 && height == -1) {
+  if (autow && autoh) {
     width = w_source_;
     height = h_source_;
     scale_y_ = scale_x_ = 1.0f;
-  } else if (width == -1) {
+  } else if (autow) {
     scale_x_ = scale_y_;
     width = w_source_ * scale_x_;
-  } else if (height == -1) {
+  } else if (autoh) {
     scale_y_ = scale_x_;
     height = h_source_ * scale_y_;
   }

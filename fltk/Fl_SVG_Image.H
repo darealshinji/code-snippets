@@ -35,13 +35,14 @@ private:
   void load_svg_(const char *name_svg, char *svg_data, int rasterize);
 
 public:
-  float scale_x() {return scale_x_;}
-  float scale_y() {return scale_y_;}
+  float scale()   { return (scale_x_ == scale_y_) ? scale_x_ : (scale_x_ + scale_y_) * 0.5f; }
+  float scale_x() { return scale_x_; }
+  float scale_y() { return scale_y_; }
   /**
     Return width and height set in the original SVG.
   */
-  float w_source() {return w_source_;}
-  float h_source() {return h_source_;}
+  int w_source() { return (int)w_source_; }
+  int h_source() { return (int)h_source_; }
 };
 
 #endif // !Fl_SVG_Image_H

@@ -53,12 +53,13 @@ int main(int argc, char **argv)
   int winh = 480;
 
   icon = new Fl_SVG_Image("Applications-multimedia.svg");
-  wp = new Fl_SVG_Image(300, -1, svg_data_name, svg_data);
+  wp = new Fl_SVG_Image(72, 96, svg_data_name, svg_data);
 
   if (wp)
   {
-    snprintf(title, TITLE_MAX - 1, "SVG test: %dx%d (%d%% zoom; from %dx%d)",
-             wp->w(), wp->h(), (int)(wp->scale_x()*100.0), (int)wp->w_source(), (int)wp->h_source());
+    snprintf(title, TITLE_MAX - 1, "SVG test: %dx%d (%dx%d), %d%% zoom (X %d%%, Y %d%%)",
+      wp->w(), wp->h(), wp->w_source(), wp->h_source(),
+      (int)(wp->scale()*100.0), (int)(wp->scale_x()*100.0), (int)(wp->scale_y()*100.0));
   }
   else
   {
