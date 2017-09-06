@@ -66,6 +66,7 @@ Fl_SVG_Image::Fl_SVG_Image(int W, int H, const char *name_svg, char *svg_data)
 #define CHUNK_SIZE 0x4000  /* memory chunk size used by zlib */
 #define SVG_UNITS  "px"    /* units passed to NanoSVG */
 #define SVG_DPI    96.0f   /* DPI (dots-per-inch) used for unit conversion */
+#define SVG_DEPTH  4       /* image depth */
 
 void Fl_SVG_Image::load_svg_(const char *name_svg, char *svg_data, int rasterize)
 {
@@ -194,7 +195,7 @@ void Fl_SVG_Image::load_svg_(const char *name_svg, char *svg_data, int rasterize
 
   w((int)width);
   h((int)height);
-  d(4);
+  d(SVG_DEPTH);
 
   if (rasterize == 0) {
     goto stop;
