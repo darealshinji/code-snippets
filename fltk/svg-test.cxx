@@ -52,7 +52,7 @@ int main(int argc, char **argv)
   int winw = 640;
   int winh = 480;
 
-  icon = new Fl_SVG_Image("Applications-multimedia.svg");
+  icon = new Fl_SVG_Image("Applications-multimedia.svgz");
   wp = new Fl_SVG_Image(72, 96, svg_data_name, svg_data);
 
   if (wp)

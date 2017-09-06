@@ -6,6 +6,7 @@
 #include "nanosvgrast.h"
 
 #include <string.h>
+#include <zlib.h>
 
 Fl_SVG_Image::Fl_SVG_Image(const char *filename, int rasterize)
  : Fl_RGB_Image(0,0,0)
@@ -55,25 +56,85 @@ Fl_SVG_Image::Fl_SVG_Image(int W, int H, const char *name_svg, char *svg_data)
   load_svg_(name_svg, svg_data, 1);
 }
 
+#define CHUNK_SIZE 0x4000  /* memory chunk size used by zlib */
+#define SVG_UNITS  "px"    /* units passed to NanoSVG */
+#define SVG_DPI    96.0f   /* DPI (dots-per-inch) used for unit conversion */
+
 void Fl_SVG_Image::load_svg_(const char *name_svg, char *svg_data, int rasterize)
 {
   NSVGimage *image = NULL;
   NSVGrasterizer *r = NULL;
-  const char *units = "px";
-  float dpi, width, height;
+  float width, height;
   bool autow = false;
   bool autoh = false;
-
-  dpi = 96.0f;
 
   if (svg_data) {
     size_t size = strlen(svg_data);
     char *tmp = new char[size];
     strncpy(tmp, svg_data, size-1);
-    image = nsvgParse(tmp, units, dpi);
+    image = nsvgParse(tmp, SVG_UNITS, SVG_DPI);
     delete[] tmp;
   } else if (name_svg) {
-    image = nsvgParseFromFile(name_svg, units, dpi);
+    size_t length = strlen(name_svg);
+    size_t shift = 0;
+
+    if (length > 5) {
+      shift = length-5;
+    }
+
+    if (strcmp(".svgz", name_svg+shift) == 0) {
+      FILE *file;
+      char *string = NULL;
+      unsigned char in[CHUNK_SIZE];
+      unsigned char out[CHUNK_SIZE];
+      z_stream strm = { in, 0,0,0,0,0,0,0,0,0,0,0,0,0 };
+
+      if (inflateInit2(&strm, 15|32) < 0) {
+        goto stop;
+      }
+
+      if ((file = fopen(name_svg, "rb")) == NULL) {
+        goto stop;
+      }
+
+      while (1) {
+        int bytes_read = fread(in, sizeof(char), sizeof(in), file);
+        if (ferror(file)) {
+          goto stop;
+        }
+        strm.avail_in = bytes_read;
+
+        do {
+          strm.avail_out = CHUNK_SIZE;
+          strm.next_out = out;
+          if (inflate(&strm, Z_NO_FLUSH) < 0) {
+            goto stop;
+          }
+        }
+        while (strm.avail_out == 0);
+
+        if (feof(file)) {
+          string = new char[strm.total_out+1];
+          strncpy(string, (char *)out, strm.total_out);
+          inflateEnd(&strm);
+          break;
+        }
+      }
+
+      if (fclose(file)) {
+        if (string) { delete[] string; }
+        goto stop;
+      }
+
+      if (string) {
+        string[strm.total_out+1] = '\0';
+        image = nsvgParse(string, SVG_UNITS, SVG_DPI);
+        delete[] string;
+      }
+    } else {
+      /* uncompressed SVG */
+      image = nsvgParseFromFile(name_svg, SVG_UNITS, SVG_DPI);
+    }
   }
 
   if (!image) {
