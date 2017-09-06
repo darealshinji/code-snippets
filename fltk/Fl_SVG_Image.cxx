@@ -6,7 +6,14 @@
 #include "nanosvgrast.h"
 
 #include <string.h>
+
+//#include "config.h"
+#define HAVE_LIBZ 1
+
+#ifdef HAVE_LIBZ
 #include <zlib.h>
+#endif
+
 
 Fl_SVG_Image::Fl_SVG_Image(const char *filename, int rasterize)
  : Fl_RGB_Image(0,0,0)
@@ -65,8 +72,8 @@ void Fl_SVG_Image::load_svg_(const char *name_svg, char *svg_data, int rasterize
   NSVGimage *image = NULL;
   NSVGrasterizer *r = NULL;
   float width, height;
-  bool autow = false;
-  bool autoh = false;
+  bool auto_w = false;
+  bool auto_h = false;
 
   if (svg_data) {
     size_t size = strlen(svg_data);
@@ -75,17 +82,23 @@ void Fl_SVG_Image::load_svg_(const char *name_svg, char *svg_data, int rasterize
     image = nsvgParse(tmp, SVG_UNITS, SVG_DPI);
     delete[] tmp;
   } else if (name_svg) {
+#ifdef HAVE_LIBZ
     size_t length = strlen(name_svg);
     if ((length > 7 && strcmp(".svg.gz", name_svg+length-7) == 0) ||
         (length > 5 && strcmp(".svgz", name_svg+length-5) == 0))
     {
       FILE *file;
       char *string = NULL;
-      unsigned char in[CHUNK_SIZE];
-      unsigned char out[CHUNK_SIZE];
-      z_stream strm = { in, 0,0,0,0,0,0,0,0,0,0,0,0,0 };
+      Bytef in[CHUNK_SIZE];
+      Bytef out[CHUNK_SIZE];
+      z_stream strm;
 
-      if (inflateInit2(&strm, 15|32) < 0) {
+      strm.next_in = in;
+      strm.zalloc = Z_NULL;
+      strm.zfree = Z_NULL;
+      strm.opaque = Z_NULL;
+
+      if (inflateInit2(&strm, 15|32) != Z_OK) {
         goto stop;
       }
 
@@ -94,16 +107,20 @@ void Fl_SVG_Image::load_svg_(const char *name_svg, char *svg_data, int rasterize
       }
 
       while (1) {
-        int bytes_read = fread(in, sizeof(char), sizeof(in), file);
+        strm.avail_in = (uInt)fread(in, sizeof(Bytef), sizeof(in), file);
         if (ferror(file)) {
+          fclose(file);
+          inflateEnd(&strm);
           goto stop;
         }
-        strm.avail_in = bytes_read;
 
         do {
           strm.avail_out = CHUNK_SIZE;
           strm.next_out = out;
-          if (inflate(&strm, Z_NO_FLUSH) < 0) {
+          int status = inflate(&strm, Z_NO_FLUSH);
+          if (status != Z_OK && status != Z_STREAM_END) {
+            fclose(file);
+            inflateEnd(&strm);
             goto stop;
           }
         }
@@ -111,11 +128,11 @@ void Fl_SVG_Image::load_svg_(const char *name_svg, char *svg_data, int rasterize
 
         if (feof(file)) {
           string = new char[strm.total_out+1];
-          strncpy(string, (char *)out, strm.total_out);
-          inflateEnd(&strm);
+          strncpy(string, (const char *)out, (size_t)strm.total_out);
           break;
         }
       }
+      inflateEnd(&strm);
 
       if (fclose(file)) {
         if (string) { delete[] string; }
@@ -127,7 +144,10 @@ void Fl_SVG_Image::load_svg_(const char *name_svg, char *svg_data, int rasterize
         image = nsvgParse(string, SVG_UNITS, SVG_DPI);
         delete[] string;
       }
-    } else {
+    }
+    else
+#endif //HAVE_LIBZ
+    {
       /* uncompressed SVG */
       image = nsvgParseFromFile(name_svg, SVG_UNITS, SVG_DPI);
     }
@@ -144,7 +164,7 @@ void Fl_SVG_Image::load_svg_(const char *name_svg, char *svg_data, int rasterize
     width = w_source_;
     scale_x_ = 1.0f;
   } else if (w_ <= -1) {
-    autow = true;
+    auto_w = true;
   } else {
     width = (float)w_;
     scale_x_ = width / w_source_;
@@ -154,20 +174,20 @@ void Fl_SVG_Image::load_svg_(const char *name_svg, char *svg_data, int rasterize
     height = h_source_;
     scale_y_ = 1.0f;
   } else if (h_ <= -1) {
-    autoh = true;
+    auto_h = true;
   } else {
     height = (float)h_;
     scale_y_ = height / h_source_;
   }
 
-  if (autow && autoh) {
+  if (auto_w && auto_h) {
     width = w_source_;
     height = h_source_;
     scale_y_ = scale_x_ = 1.0f;
-  } else if (autow) {
+  } else if (auto_w) {
     scale_x_ = scale_y_;
     width = w_source_ * scale_x_;
-  } else if (autoh) {
+  } else if (auto_h) {
     scale_y_ = scale_x_;
     height = h_source_ * scale_y_;
   }
