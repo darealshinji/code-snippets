@@ -76,13 +76,9 @@ void Fl_SVG_Image::load_svg_(const char *name_svg, char *svg_data, int rasterize
     delete[] tmp;
   } else if (name_svg) {
     size_t length = strlen(name_svg);
-    size_t shift = 0;
-
-    if (length > 5) {
-      shift = length-5;
-    }
-
-    if (strcmp(".svgz", name_svg+shift) == 0) {
+    if ((length > 7 && strcmp(".svg.gz", name_svg+length-7) == 0) ||
+        (length > 5 && strcmp(".svgz", name_svg+length-5) == 0))
+    {
       FILE *file;
       char *string = NULL;
       unsigned char in[CHUNK_SIZE];
