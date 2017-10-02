@@ -42,9 +42,10 @@ int main(void)
 {
   const char *str1 = "Budapest",
     *str2 = "Bukarest",
-    *str3 = "SONIC.exe",
+    *str3 = "abcdef",
+    *str4 = "SONIC.exe",
     *suf = ".exe",
-    *yesno = "No";
+    *yesno = "does NOT end";
   size_t n;
 
   /* Test 1 */
@@ -52,15 +53,24 @@ int main(void)
   printf("Test 1\n");
   printf("string 1: %s\n", str1);
   printf("string 2: %s\n", str2);
-  printf("number of last common chars: %ld\n\n", n);
+  printf("last common chars: %ld\n\n", n);
 
   /* Test 2 */
-  if (strlastcmp(str3, suf) == strlen(suf))
-  {
-    yesno = "Yes";
-  }
+  n = strlastcmp(str3, str3);
   printf("Test 2\n");
-  printf("Does `%s' end on `%s'? - %s!\n", str3, suf, yesno);
+  printf("string 1: %s\n", str3);
+  printf("string 2: %s\n", str3);
+  printf("last common chars: %ld\n\n", n);
+
+  /* Test 3 */
+  if (strlastcmp(str4, suf) == strlen(suf))
+  {
+    yesno = "ends";
+  }
+  printf("Test 3\n");
+  printf("string: %s\n", str4);
+  printf("suffix: %s\n", suf);
+  printf("`%s' %s on `%s'\n", str4, yesno, suf);
 
   return 0;
 }
