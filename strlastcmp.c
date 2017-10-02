@@ -23,14 +23,11 @@ size_t strlastcmp(const char *s1, const char *s2)
 
   while (len1 > 0 && len2 > 0)
   {
-    if (s1[len1 - 1] == s2[len2 - 1])
-    {
-      ++n;
-    }
-    else
+    if (s1[len1 - 1] != s2[len2 - 1])
     {
       break;
     }
+    ++n;
     --len1;
     --len2;
   }
