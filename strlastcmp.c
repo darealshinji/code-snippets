@@ -1,14 +1,12 @@
 #include <stdio.h>
 #include <string.h>
 
+size_t strlastcmp(const char *s1, const char *s2);
+int str_ends_on(const char *s, const char *suf);
+
 /* Compares the last bytes of s1 and s2 and returns the number of equal bytes.
  * The terminating null byte ('\0') is ignored.
  * It returns -1 if the length of s1 and/or s2 is 0.
- *
- * Use strlastcmp() and strlen() to check if s1 ends on s2:
- *   if (strlastcmp(s1,s2) == strlen(s2)) {
- *     // s1 ends on s2
- *   }
  */
 size_t strlastcmp(const char *s1, const char *s2)
 {
@@ -33,6 +31,16 @@ size_t strlastcmp(const char *s1, const char *s2)
   }
 
   return n;
+}
+
+/* Returns 1 if string s ends on string suf, otherwise 0 is returned. */
+int str_ends_on(const char *s, const char *suf)
+{
+  if (strlastcmp(s, suf) == strlen(suf))
+  {
+    return 1;
+  }
+  return 0;
 }
 
 int main(void)
@@ -60,7 +68,7 @@ int main(void)
   printf("last common chars: %ld\n\n", n);
 
   /* Test 3 */
-  if (strlastcmp(str4, suf) == strlen(suf))
+  if (str_ends_on(str4, suf))
   {
     yesno = "ends";
   }
