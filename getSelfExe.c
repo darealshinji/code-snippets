@@ -9,7 +9,7 @@
 
 char *getSelfExe()
 {
-  char buf[PATH_MAX];
+  char buf[PATH_MAX + 1];
 
   ssize_t size = readlink("/proc/self/exe", buf, PATH_MAX);
 
