@@ -4,22 +4,20 @@
 #include <unistd.h>
 #include <limits.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
+
+char getSelfExeBuf[PATH_MAX + 1];
 
 char *getSelfExe()
 {
-  char buf[PATH_MAX + 1];
-
-  ssize_t size = readlink("/proc/self/exe", buf, PATH_MAX);
+  memset(getSelfExeBuf, '\0', PATH_MAX + 1);
+  ssize_t size = readlink("/proc/self/exe", getSelfExeBuf, PATH_MAX);
 
   if (size == -1)
   {
     return NULL;
   }
-  buf[size] = '\0';
-
-  return strdup(buf);
+  return getSelfExeBuf;
 }
 
 int main(void)

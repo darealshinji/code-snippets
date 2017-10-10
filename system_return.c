@@ -8,6 +8,8 @@
  * given command rather than that of the forked shell
  */
 
+#define PRINT_ERROR(msg) fprintf(stderr, "error: " msg " \n")
+
 int system_return(const char *command)
 {
   int status;
@@ -17,6 +19,7 @@ int system_return(const char *command)
   if (pid == 0)
   {
     execl("/bin/sh", "sh", "-c", command, (char *)NULL);
+    //execl(command, command, (char *)NULL);
     _exit(127);  /* if execl() was successful, this won't be reached */
   }
 
@@ -28,22 +31,22 @@ int system_return(const char *command)
       {
         if ((rv = WEXITSTATUS(status)) == 127)
         {
-          fprintf(stderr, "execl() failed\n");
+          PRINT_ERROR("execl() failed");
         }
       }
       else
       {
-        fprintf(stderr, "the program did not terminate normally\n");
+        PRINT_ERROR("the program did not terminate normally");
       }
     }
     else
     {
-      fprintf(stderr, "waitpid() failed\n");
+      PRINT_ERROR("waitpid() failed");
     }
   }
   else
   {
-    fprintf(stderr, "failed to fork()\n");
+    PRINT_ERROR("failed to fork()");
   }
 
   return rv;

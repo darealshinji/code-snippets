@@ -44,19 +44,20 @@
 # define PROG "prog"
 #endif
 
+#define PRINT_ERROR(msg) fprintf(stderr, "error: " msg " \n")
+
+char getSelfExeBuf[PATH_MAX + 1];
+
 char *getSelfExe()
 {
-  char buf[PATH_MAX];
-
-  ssize_t size = readlink("/proc/self/exe", buf, PATH_MAX);
+  memset(getSelfExeBuf, '\0', PATH_MAX + 1);
+  ssize_t size = readlink("/proc/self/exe", getSelfExeBuf, PATH_MAX);
 
   if (size == -1)
   {
     return NULL;
   }
-  buf[size] = '\0';
-
-  return strdup(buf);
+  return getSelfExeBuf;
 }
 
 int runCommand(const char *command)
@@ -80,22 +81,22 @@ int runCommand(const char *command)
       {
         if ((rv = WEXITSTATUS(status)) == 127)
         {
-          perror("execl()");
+          PRINT_ERROR("execl() failed");
         }
       }
       else
       {
-        fprintf(stderr, "the program did not terminate normally\n");
+        PRINT_ERROR("the program did not terminate normally");
       }
     }
     else
     {
-      perror("waitpid()");
+      PRINT_ERROR("waitpid() failed");
     }
   }
   else
   {
-    perror("fork()");
+    PRINT_ERROR("failed to fork()");
   }
 
   return rv;
@@ -113,7 +114,7 @@ int main(void)
 
   if (self != NULL && chdir(dirname(self)) != 0)
   {
-    perror("chdir()");
+    PRINT_ERROR("chdir()");
   }
 
   if (uname(&sysInfo) == 0 && strcmp("x86_64", sysInfo.machine) == 0)

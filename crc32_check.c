@@ -1,19 +1,33 @@
 /**
- * A small CRC32 checksum tool using zlib's crc32() function
+ * A small CRC32 checksum tool using zlib's or stb's crc32() function.
  *
- * Compile with
- *   gcc -Wall -O3 -march=native -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN -Izlib -c -o crc32.o zlib/crc32.c
- *   gcc -Wall -O3 -march=native -Izlib crc32_check.c -s -o crc32_check crc32.o
- * or
+ * Compile against zlib:
  *   gcc -Wall -O3 crc32_check.c -s -o crc32_check -lz
+ *
+ * Compile with built-in stb crc function (slower):
+ *   gcc -Wall -O3 -DSTB_DEFINE crc32_check.c -s -o crc32_check
+ *
+ * Compile with built-in zlib sources:
+ *   zlibDir="path/to/zlib/sources"
+ *   gcc -Wall -O3 -march=native -DUSE_ZLIB -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN -I"$zlibDir" -c -o crc32.o "$zlibDir/crc32.c"
+ *   gcc -Wall -O3 -march=native -I"$zlibDir" crc32_check.c -s -o crc32_check crc32.o
  */
 
 #include <stdio.h>
 #include <string.h>
 #include <libgen.h>
-#include <zlib.h>
 
-char *self;
+#ifdef STB_DEFINE
+typedef unsigned int uInt;
+typedef unsigned long uLong;
+typedef unsigned char Bytef;
+typedef uInt crc32_t;
+#else
+#include <zlib.h>
+typedef uLong crc32_t;
+#endif
+
+char *perror_wrapper_self = NULL;
 
 static inline
 void progress(uInt n)
@@ -40,16 +54,55 @@ void progress(uInt n)
 static inline
 void perror_wrapper(char *ch)
 {
-  char error[4352];
-  snprintf(error, 4351, "%s: %s", self, ch);
-  perror(error);
+  if (perror_wrapper_self)
+  {
+    char error[4352] = {0};
+    snprintf(error, 4351, "%s: %s", perror_wrapper_self, ch);
+    perror(error);
+  }
+  else
+  {
+    perror(ch);
+  }
 }
+
+/**
+ * https://github.com/nothings/stb
+ * from stb_crc32_block()
+ */
+#ifdef STB_DEFINE
+static inline
+uInt crc32(uInt crc, const Bytef *buffer, uInt len)
+{
+  static uInt crc_table[256];
+  uInt i, j, s;
+  crc = ~crc;
+
+  if (crc_table[1] == 0)
+  {
+    for (i = 0; i < 256; i++)
+    {
+      for (s = i, j = 0; j < 8; ++j)
+      {
+        s = (s >> 1) ^ (s & 1 ? 0xedb88320 : 0);
+      }
+      crc_table[i] = s;
+    }
+  }
+
+  for (i = 0; i < len; ++i)
+  {
+    crc = (crc >> 8) ^ crc_table[buffer[i] ^ (crc & 0xff)];
+  }
+  return ~crc;
+}
+#endif
 
 long get_crc32(char *file)
 {
   FILE *fp;
-  uLong crc;
-  char buf[262144]; /* 256k */
+  crc32_t crc;
+  Bytef buf[262144]; /* 256k */
   long fileSize = 0L;
   long byteCount = 0L;
   uInt completed = 0;
@@ -87,7 +140,7 @@ long get_crc32(char *file)
   }
 
   /* initialize crc */
-  crc = crc32(0L, Z_NULL, 0);
+  crc = crc32(0, NULL, 0);
 
   /* loop until we reach the end */
   while (feof(fp) == 0)
@@ -144,12 +197,10 @@ void crc_check(char *file)
     }
     else
     {
-      char crc_upper[9];
-      char crc_lower[9];
-      memset(crc_upper, '\0', 9);
-      memset(crc_lower, '\0', 9);
-      sprintf(crc_upper, "%.8lX", crc);
-      sprintf(crc_lower, "%.8lx", crc);
+      char crc_upper[9] = {0};
+      char crc_lower[9] = {0};
+      snprintf(crc_upper, 9, "%.8lX", crc);
+      snprintf(crc_lower, 9, "%.8lx", crc);
 
       /* check if the filename contains the checksum */
       char *match;
@@ -168,7 +219,7 @@ void crc_check(char *file)
 
 int main(int argc, char *argv[])
 {
-  self = basename(argv[0]);
+  perror_wrapper_self = basename(argv[0]);
 
   if (argc == 1)
   {

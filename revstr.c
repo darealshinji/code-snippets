@@ -1,21 +1,28 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* Returns a pointer to a new string which is a duplicate of the string s
  * but with bytes in reversed order ("abcdef" becomes "fedcba").
- * A terminating null byte ('\0') is added.
+ * A terminating null byte ('\0') is added. The string must be freed later.
  */
 char *revstr(const char *s)
 {
-  char *r = strdup(s);
-  size_t i = 0;
-  size_t j = strlen(s) - 1;
+  char *r = NULL;
+  size_t i, j;
 
-  for (; i <= j; ++i)
+  if (s != NULL)
   {
-    r[i] = s[j - i];
+    j = strlen(s);
+    r = malloc(j);
+    --j;
+
+    for (i = 0; i <= j; ++i)
+    {
+      r[i] = s[j - i];
+    }
+    r[i] = '\0';
   }
-  r[i] = '\0';
 
   return r;
 }
@@ -23,8 +30,12 @@ char *revstr(const char *s)
 int main(void)
 {
   const char *str = "abcdef";
-  char *rev = revstr(str);
+  char *rev = NULL;
+
+  rev = revstr(str);
   printf("%s -> %s\n", str, rev);
+
+  free(rev);
   return 0;
 }
 
