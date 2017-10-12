@@ -17,50 +17,55 @@ enum {
 /* fork /bin/cp and return the pid; set flags to 0 for default settings */
 pid_t copy_file_start(const char *source, const char *dest, int flags)
 {
-  const char *opts;
-  pid_t pid, cf_err = 0;
+  char opts[5] = { '-', 'f', 'L', '\0', '\0' };
+  char *source_base, *target_dest;
+  size_t len;
+  pid_t pid;
 
   if (source == NULL || strlen(source) == 0 || dest == NULL || strlen(dest) == 0)
   {
-    return cf_err;
+    return 0;
   }
 
   /* source does not exist */
   if (access(source, F_OK) != 0)
   {
-    return cf_err;
+    return 0;
   }
 
   /* target exists */
   if (access(dest, F_OK) == 0)
   {
-    if (!((flags & CP_TARGETDIR) || (flags & CP_FORCE)))
+    if ( !((flags & CP_TARGETDIR) || (flags & CP_FORCE)) )
     {
-      /* we didn't set CP_TARGETDIR or CP_FORCE */
-      return cf_err;
+      return 0;
     }
-    else if ((flags & CP_TARGETDIR) && !(flags & CP_FORCE))
+    else if ( (flags & CP_TARGETDIR) && !(flags & CP_FORCE) )
     {
-      /* we set CP_TARGETDIR but not CP_FORCE */
-      char *source_base = basename((char *)source);
-      char target_dest[strlen(dest) + strlen(source_base) + 2];
+      source_base = basename((char *)source);
+      len = strlen(dest) + strlen(source_base) + 2;
+      target_dest = malloc(len);
       sprintf(target_dest, "%s/%s", dest, source_base);
+      target_dest[len] = '\0';
 
       /* path already exists inside targetdir */
       if (access(target_dest, F_OK) == 0)
       {
-        return cf_err;
+        free(target_dest);
+        return 0;
       }
+      free(target_dest);
     }
   }
 
   if (flags & CP_NODEREF)
   {
-    opts = (flags & CP_DIR) ? "-rfP" : "-fP";
+    opts[2] = 'P';
   }
-  else
+
+  if (flags & CP_DIR)
   {
-    opts = (flags & CP_DIR) ? "-rfL" : "-fL";
+    opts[3] = 'r';
   }
 
   pid = fork();
@@ -94,7 +99,7 @@ int get_pid_status_simple(pid_t pid)
 }
 
 /* simple file copying function */
-#define copy_file(source,dest,flags)  get_pid_status_simple(copy_file_start(source, dest, flags))
+#define copy_file(source,dest,flags)  get_pid_status_simple(copy_file_start(source,dest,flags))
 //int copy_file(const char *source, const char *dest, int flags)
 //{
 //  return get_pid_status_simple(copy_file_start(source, dest, flags));
@@ -103,7 +108,7 @@ int get_pid_status_simple(pid_t pid)
 int main(void)
 {
   /*
-  pid_t pid = copy_file_start("source", "dest", CP_DIR);
+  pid_t pid = copy_file_start("source", "dest", CP_DIR, &error);
   printf("pid: %d\n", (int)pid);
   if (pid > 0)
   {
@@ -112,6 +117,6 @@ int main(void)
   }
   return 0;
   */
-  return copy_file("source", "dest/", CP_DIR);
+  return copy_file("source", "dest", CP_DIR);
 }
 
