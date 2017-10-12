@@ -53,6 +53,7 @@ int main(int argc, char *argv[])
         free(file);
         break;
       }
+      free(file);
     }
 
     free(env_copy);
