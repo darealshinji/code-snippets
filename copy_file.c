@@ -108,7 +108,7 @@ int get_pid_status_simple(pid_t pid)
 int main(void)
 {
   /*
-  pid_t pid = copy_file_start("source", "dest", CP_DIR, &error);
+  pid_t pid = copy_file_start("source", "dest", CP_DIR);
   printf("pid: %d\n", (int)pid);
   if (pid > 0)
   {
