@@ -27,7 +27,9 @@
 #include <FL/Fl.H>
 #include <FL/fl_ask.H>
 #include <FL/Fl_Box.H>
+#include <FL/Fl_Button.H>
 #include <FL/Fl_Multi_Browser.H>
+#include <FL/Fl_Native_File_Chooser.H>
 #include <FL/Fl_Double_Window.H>
 #ifdef WITH_ICON
 #include <FL/Fl_Pixmap.H>
@@ -80,12 +82,11 @@ class dnd_box : public Fl_Box
 
 Fl_Double_Window *win;
 Fl_Multi_Browser *browser;
+Fl_Button *bt_copy;
 dnd_box *box;
-std::string list[MAX_ENTRIES];
-std::string list_crc[MAX_ENTRIES];
+std::string list[MAX_ENTRIES], list_crc[MAX_ENTRIES];
 int current_line = 0;
-int linecount = 0;
-bool changed_tooltip = false;
+int itemcount = 0;
 
 void dnd_callback(const char *items);
 void message_reached_max(void);
@@ -182,7 +183,7 @@ void dnd_callback(const char *items)
   char *line;
   size_t i;
 
-  if (linecount < MAX_ENTRIES && strncmp(items, "file:///", 8) == 0 && strlen(items) > 8)
+  if (itemcount < MAX_ENTRIES && strncmp(items, "file:///", 8) == 0 && strlen(items) > 8)
   {
     split(std::string(items), '\n', vector);
 
@@ -192,16 +193,12 @@ void dnd_callback(const char *items)
 
       if (access(line, R_OK) == 0)
       {
-        ++linecount;
+        ++itemcount;
 
-        if (linecount < MAX_ENTRIES)
+        if (itemcount < MAX_ENTRIES)
         {
-          if (!changed_tooltip)
-          {
-            box->tooltip("select to copy checksum");
-          }
-          list[linecount] = std::string(line);
-          entry = "\t@." + std::string(basename(list[linecount].c_str()));
+          list[itemcount] = std::string(line);
+          entry = "\t@." + std::string(basename(list[itemcount].c_str()));
           browser->add(entry.c_str());
           win->redraw();
         }
@@ -215,7 +212,7 @@ extern "C" void *get_crc_checksum(void *)
 {
   while (true)
   {
-    if (current_line < linecount)
+    if (current_line < itemcount)
     {
       long crc;
       std::string entry = "@f@C88@.ERROR";  /* red */
@@ -317,6 +314,32 @@ void message_reached_max(void)
 
 void browser_cb(Fl_Widget *)
 {
+  if (itemcount > 0)
+  {
+    bt_copy->activate();
+  }
+}
+
+void open_cb(Fl_Widget *)
+{
+  Fl_Native_File_Chooser fnfc;
+  std::string entry;
+
+  fnfc.type(Fl_Native_File_Chooser::BROWSE_FILE);
+  fnfc.title("Select a file");
+
+  if (fnfc.show() == 0 && itemcount + 1 < MAX_ENTRIES)
+  {
+    ++itemcount;
+    list[itemcount] = std::string(fnfc.filename());
+    entry = "\t@." + std::string(basename(fnfc.filename()));
+    browser->add(entry.c_str());
+    win->redraw();
+  }
+}
+
+void copy_cb(Fl_Widget *)
+{
   const char *text = list_crc[browser->value()].c_str();
   int len = strlen(text);
 
@@ -326,12 +349,27 @@ void browser_cb(Fl_Widget *)
   }
 }
 
+void close_cb(Fl_Widget *)
+{
+  win->hide();
+}
+
 int main(void)
 {
+  Fl_Button *bt_open, *bt_close;
+  Fl_Box *dummy;
+  Fl_Group *g;
   pthread_t crc_thread;
   int winw = 640;
   int winh = 400;
+  int butw = 90;
   int column_widths[] = { 82, 0 };
+
+  /* satisfying section 4 of the FLTK license's LGPL exception */
+  std::cout << "FLTK version " << FL_MAJOR_VERSION << "." << FL_MINOR_VERSION
+    << "." << FL_PATCH_VERSION << " (http://www.fltk.org)\n"
+    << "zlib version " ZLIB_VERSION << " (https://zlib.net)"
+    << std::endl;
 
 #ifdef WITH_ICON
   Fl_Pixmap pixmap(icon_xpm);
@@ -340,16 +378,32 @@ int main(void)
 #endif
   Fl::visual(FL_DOUBLE|FL_INDEX);
 
-  win = new Fl_Double_Window(winw, winh, "CRC32 Check  [drag & drop files]");
+  win = new Fl_Double_Window(winw, winh, "CRC32 Check");
   {
-    browser = new Fl_Multi_Browser(10, 10, winw-20, winh-20);
+    browser = new Fl_Multi_Browser(10, 10, winw-20, winh-60);
     browser->column_widths(column_widths);
     browser->callback(browser_cb);
-    box = new dnd_box(0, 0, winw, winh, NULL);
-    box->tooltip("drop files here");
+
+    box = new dnd_box(10, 10, winw-20, winh-60, NULL);
+    box->tooltip("drag and drop files here");
+
+    g = new Fl_Group(0, winh-40, winw, winh-50);
+    {
+      dummy = new Fl_Box(0, winh-40, winw-butw*3-30, 30);
+      dummy->type(FL_NO_BOX);
+      bt_copy = new Fl_Button(winw-butw*3-30, winh-40, butw, 30, "Copy CRC");
+      bt_copy->deactivate();
+      bt_copy->callback(copy_cb);
+      bt_open = new Fl_Button(winw-butw*2-20, winh-40, butw, 30, "Add file");
+      bt_open->callback(open_cb);
+      bt_close = new Fl_Button(winw-butw-10, winh-40, butw, 30, "Close");
+      bt_close->callback(close_cb);
+    }
+    g->resizable(dummy);
+    g->end();
   }
   win->resizable(browser);
-  win->position((Fl::w() - win->w()) / 2, (Fl::h() - win->h()) / 2);
+  win->position((Fl::w()-win->w())/2, (Fl::h()-win->h())/2);
   win->end();
 
   Fl::lock();
