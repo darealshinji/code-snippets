@@ -12,10 +12,9 @@
 //#define PATH_MAX 9
 
 //#define ALLOCATE_BUFFER
-#define BUF_SIZE  PATH_MAX + 1
 
 #ifndef ALLOCATE_BUFFER
-static char _getSelfExeBuf[BUF_SIZE];
+static char _getSelfExeBuf[PATH_MAX + 1];
 #endif
 
 char *getSelfExe()
@@ -24,11 +23,12 @@ char *getSelfExe()
   ssize_t size;
 
 #ifdef ALLOCATE_BUFFER
-  buf = malloc(BUF_SIZE);
+  buf = malloc(PATH_MAX + 1);
 #else
   buf = _getSelfExeBuf;
 #endif
-  size = readlink("/proc/self/exe", buf, BUF_SIZE);
+  memset(buf, '\0', PATH_MAX + 1);
+  size = readlink("/proc/self/exe", buf, PATH_MAX + 1);
 
   if (size == -1)
   {
@@ -37,14 +37,11 @@ char *getSelfExe()
 #endif
     return NULL;
   }
-  else if (size == BUF_SIZE)
+
+  if (buf[PATH_MAX] != '\0')
   {
     errno = ENAMETOOLONG;
     buf[PATH_MAX] = '\0';
-  }
-  else
-  {
-    memset(buf + size, '\0', BUF_SIZE - size);
   }
 
   return buf;
