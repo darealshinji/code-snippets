@@ -70,3 +70,16 @@ int main(void)
   return 0;
 }
 
+/* a more simple example */
+/*
+int main(void)
+{
+  char buf[PATH_MAX + 1] = {0};
+  if (readlink("/proc/self/exe", buf, PATH_MAX) == -1) {
+    return 1;
+  }
+  printf("%s\n", buf);
+  return 0;
+}
+*/
+
