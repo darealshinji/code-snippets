@@ -66,8 +66,6 @@ void *null_ptr = NULL;
 #define NULLPTR null_ptr
 #endif
 
-#define MAX_ENTRIES 1000
-
 class dnd_box : public Fl_Box
 {
   public:
@@ -84,7 +82,11 @@ Fl_Double_Window *win;
 Fl_Multi_Browser *browser;
 Fl_Button *bt_copy;
 dnd_box *box;
-std::string list[MAX_ENTRIES], list_crc[MAX_ENTRIES];
+
+#define MAX_ENTRIES 1000
+std::string list[MAX_ENTRIES];
+std::string list_bn[MAX_ENTRIES];
+std::string list_crc[MAX_ENTRIES];
 int current_line = 0;
 int itemcount = 0;
 
@@ -198,7 +200,8 @@ void dnd_callback(const char *items)
         if (itemcount < MAX_ENTRIES)
         {
           list[itemcount] = std::string(line);
-          entry = "\t@." + std::string(basename(list[itemcount].c_str()));
+          list_bn[itemcount] = std::string(basename(list[itemcount].c_str()));
+          entry = "\t@." + list_bn[itemcount];
           browser->add(entry.c_str());
           win->redraw();
         }
@@ -210,15 +213,14 @@ void dnd_callback(const char *items)
 
 extern "C" void *get_crc_checksum(void *)
 {
+  long crc;
+  std::string entry, color;
+  std::stringstream ss;
+
   while (true)
   {
     if (current_line < itemcount)
     {
-      long crc;
-      std::string entry = "@f@C88@.ERROR";  /* red */
-      std::string color = "88";  /* red */
-      std::stringstream ss;
-
       ++current_line;
 
       if (current_line >= MAX_ENTRIES)
@@ -237,18 +239,27 @@ extern "C" void *get_crc_checksum(void *)
 
         crc = calculate_crc32((char *)list[current_line].c_str());
 
-        if (crc >= 0L)
+        if (crc == -1)
+        {
+          entry = "@f@c@C88@.ERROR";  /* red */
+        }
+        else
         {
           ss << std::setfill('0') << std::setw(8) << std::hex << std::uppercase << crc;
           list_crc[current_line] = ss.str();
+          ss.str(std::string());
 
           if (strcasestr(browser->text(current_line), list_crc[current_line].c_str()))
           {
             color = "60";  /* green */
           }
-          entry = "@f@C" + color + "@." + list_crc[current_line];
+          else
+          {
+            color = "88";  /* red */
+          }
+          entry = "@f@c@C" + color + "@." + list_crc[current_line];
         }
-        entry += std::string(browser->text(current_line));
+        entry += "\t@." + list_bn[current_line];
 
         Fl::lock();
         browser->remove(current_line);
@@ -270,6 +281,10 @@ long calculate_crc32(char *file)
   uLong crc;
   size_t items;
   Bytef buf[262144]; /* 256k */
+  long fileSize = 0L, byteCount = 0L;
+  uInt completed = 0, n = 0;
+  std::stringstream ss;
+  std::string entry;
 
   fp = fopen(file, "r");
 
@@ -284,6 +299,7 @@ long calculate_crc32(char *file)
     return -1;
   }
 
+  fileSize = ftell(fp);
   rewind(fp);
   crc = crc32(0, NULL, 0);
 
@@ -298,6 +314,26 @@ long calculate_crc32(char *file)
         fclose(fp);
       }
       return -1;
+    }
+
+    if (file != NULL)
+    {
+      byteCount += (long)(items * sizeof(*buf));
+      n = (uInt)((float)byteCount/(float)fileSize*100.0);
+
+      if (n > completed && n < 100)
+      {
+        completed = n;
+        ss << completed;
+        entry = "@f@c" + ss.str() + "%\t@." + list_bn[current_line];
+        ss.str(std::string());
+
+        Fl::lock();
+        browser->remove(current_line);
+        browser->insert(current_line, entry.c_str());
+        Fl::unlock();
+        Fl::awake(win);
+      }
     }
 
     crc = crc32(crc, (const Bytef *)buf, (uInt)(items * sizeof(*buf)));
@@ -332,7 +368,8 @@ void open_cb(Fl_Widget *)
   {
     ++itemcount;
     list[itemcount] = std::string(fnfc.filename());
-    entry = "\t@." + std::string(basename(fnfc.filename()));
+    list_bn[itemcount] = std::string(basename(fnfc.filename()));
+    entry = "\t@." + list_bn[itemcount];
     browser->add(entry.c_str());
     win->redraw();
   }
