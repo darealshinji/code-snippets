@@ -200,7 +200,7 @@ void dnd_callback(const char *items)
         if (itemcount < MAX_ENTRIES)
         {
           list[itemcount] = std::string(line);
-          list_bn[itemcount] = std::string(basename(list[itemcount].c_str()));
+          list_bn[itemcount] = std::string(basename(line));
           entry = "\t@." + list_bn[itemcount];
           browser->add(entry.c_str());
           win->redraw();
@@ -356,23 +356,39 @@ void browser_cb(Fl_Widget *)
   }
 }
 
-void open_cb(Fl_Widget *)
+void add_cb(Fl_Widget *)
 {
-  Fl_Native_File_Chooser fnfc;
-  std::string entry;
+  Fl_Native_File_Chooser gtk;
+  std::string entry, file;
+  const char *title = "Select a file";
 
-  fnfc.type(Fl_Native_File_Chooser::BROWSE_FILE);
-  fnfc.title("Select a file");
-
-  if (fnfc.show() == 0 && itemcount + 1 < MAX_ENTRIES)
+  if (getenv("KDE_FULL_SESSION"))
   {
-    ++itemcount;
-    list[itemcount] = std::string(fnfc.filename());
-    list_bn[itemcount] = std::string(basename(fnfc.filename()));
-    entry = "\t@." + list_bn[itemcount];
-    browser->add(entry.c_str());
-    win->redraw();
+    /* don't use GTK file chooser on KDE, there may be layout issues */
+    file = std::string(fl_file_chooser(title, "*", NULL));
   }
+  else
+  {
+    gtk.title(title);
+    gtk.type(Fl_Native_File_Chooser::BROWSE_FILE);
+
+    if (gtk.show() == 0)
+    {
+      file = std::string(gtk.filename());
+    }
+  }
+
+  if (file.empty() || itemcount + 1 >= MAX_ENTRIES)
+  {
+    return;
+  }
+
+  ++itemcount;
+  list[itemcount] = file;
+  list_bn[itemcount] = std::string(basename(file.c_str()));
+  entry = "\t@." + list_bn[itemcount];
+  browser->add(entry.c_str());
+  win->redraw();
 }
 
 void copy_cb(Fl_Widget *)
@@ -415,24 +431,27 @@ int main(void)
 #endif
   Fl::visual(FL_DOUBLE|FL_INDEX);
 
-  win = new Fl_Double_Window(winw, winh, "CRC32 Check");
+  win = new Fl_Double_Window(winw, winh, "CRC32 Check - drag and drop files");
   {
     browser = new Fl_Multi_Browser(10, 10, winw-20, winh-60);
     browser->column_widths(column_widths);
     browser->callback(browser_cb);
 
     box = new dnd_box(10, 10, winw-20, winh-60, NULL);
-    box->tooltip("drag and drop files here");
+    //box->tooltip("drag and drop files here");
 
     g = new Fl_Group(0, winh-40, winw, winh-50);
     {
       dummy = new Fl_Box(0, winh-40, winw-butw*3-30, 30);
       dummy->type(FL_NO_BOX);
+
       bt_copy = new Fl_Button(winw-butw*3-30, winh-40, butw, 30, "Copy CRC");
       bt_copy->deactivate();
       bt_copy->callback(copy_cb);
+
       bt_open = new Fl_Button(winw-butw*2-20, winh-40, butw, 30, "Add file");
-      bt_open->callback(open_cb);
+      bt_open->callback(add_cb);
+
       bt_close = new Fl_Button(winw-butw-10, winh-40, butw, 30, "Close");
       bt_close->callback(close_cb);
     }
