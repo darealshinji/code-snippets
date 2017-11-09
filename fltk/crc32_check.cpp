@@ -59,11 +59,9 @@
 #include "crc32_check.xpm"
 #endif
 
-#ifdef nullptr
-#define NULLPTR nullptr
-#else
-void *null_ptr = NULL;
-#define NULLPTR null_ptr
+#ifndef nullptr
+void *_nullptr = NULL;
+#define nullptr _nullptr
 #endif
 
 class dnd_box : public Fl_Box
@@ -272,7 +270,7 @@ extern "C" void *get_crc_checksum(void *)
     usleep(1); /* needed, somehow... */
   }
 
-  return NULLPTR;
+  return nullptr;
 }
 
 long calculate_crc32(char *file)
@@ -465,7 +463,7 @@ int main(void)
   Fl::lock();
   win->show();
 
-  pthread_create(&crc_thread, 0, &get_crc_checksum, NULLPTR);
+  pthread_create(&crc_thread, 0, &get_crc_checksum, nullptr);
 
   return Fl::run();
 }
