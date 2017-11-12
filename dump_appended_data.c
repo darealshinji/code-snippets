@@ -15,8 +15,8 @@
 
 int main(void)
 {
-  char self[PATH_MAX + 1];
-  char out[PATH_MAX + 6];
+  char self[PATH_MAX + 1] = {0};
+  char out[PATH_MAX + 6] = {0};
   char buf[262144]; /* 256k */
   long length;
   ssize_t size, items;
@@ -30,7 +30,6 @@ int main(void)
     return 1;
   }
 
-  memset(self, '\0', PATH_MAX + 1);
   size = readlink("/proc/self/exe", self, PATH_MAX);
 
   if (size == -1)
@@ -39,7 +38,6 @@ int main(void)
     return 1;
   }
 
-  memset(out, '\0', PATH_MAX + 6);
   sprintf(out, "%s_dump", self);
 
   fd = fopen(self, "r");
@@ -85,7 +83,8 @@ int main(void)
   if (fd) { fclose(fd); }
   if (fdOut) { fclose(fdOut); }
 
-  //chmod(out, 00644);
+  /* make executable? */
+  //chmod(out, 00755);
 
   return 0;
 }
