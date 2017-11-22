@@ -60,8 +60,10 @@
 #endif
 
 #ifndef nullptr
-void *_nullptr = NULL;
-#define nullptr _nullptr
+void *_null_ptr = NULL;
+#define NULLPTR _null_ptr
+#else
+#define NULLPTR nullptr
 #endif
 
 class dnd_box : public Fl_Box
@@ -270,7 +272,7 @@ extern "C" void *get_crc_checksum(void *)
     usleep(1); /* needed, somehow... */
   }
 
-  return nullptr;
+  return NULLPTR;
 }
 
 long calculate_crc32(char *file)
@@ -357,13 +359,14 @@ void browser_cb(Fl_Widget *)
 void add_cb(Fl_Widget *)
 {
   Fl_Native_File_Chooser gtk;
-  std::string entry, file;
+  std::string entry;
+  const char *file = NULL;
   const char *title = "Select a file";
 
   if (getenv("KDE_FULL_SESSION"))
   {
     /* don't use GTK file chooser on KDE, there may be layout issues */
-    file = std::string(fl_file_chooser(title, "*", NULL));
+    file = fl_file_chooser(title, "*", NULL);
   }
   else
   {
@@ -372,18 +375,18 @@ void add_cb(Fl_Widget *)
 
     if (gtk.show() == 0)
     {
-      file = std::string(gtk.filename());
+      file = gtk.filename();
     }
   }
 
-  if (file.empty() || itemcount + 1 >= MAX_ENTRIES)
+  if (!file || itemcount + 1 >= MAX_ENTRIES)
   {
     return;
   }
 
   ++itemcount;
-  list[itemcount] = file;
-  list_bn[itemcount] = std::string(basename(file.c_str()));
+  list[itemcount] = std::string(file);
+  list_bn[itemcount] = std::string(basename(file));
   entry = "\t@." + list_bn[itemcount];
   browser->add(entry.c_str());
   win->redraw();
@@ -463,7 +466,7 @@ int main(void)
   Fl::lock();
   win->show();
 
-  pthread_create(&crc_thread, 0, &get_crc_checksum, nullptr);
+  pthread_create(&crc_thread, 0, &get_crc_checksum, NULLPTR);
 
   return Fl::run();
 }
