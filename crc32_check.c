@@ -13,24 +13,50 @@
  *   gcc -Wall -O3 -march=native -I"$zlibDir" crc32_check.c -s -o crc32_check crc32.o
  */
 
-#include <stdio.h>
-#include <string.h>
+#ifdef _MSC_VER
+#include <Windows.h>
+#else
 #include <libgen.h>
+#endif
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #ifdef STB_DEFINE
-typedef unsigned int uInt;
-typedef unsigned long uLong;
 typedef unsigned char Bytef;
-typedef uInt crc32_t;
+typedef unsigned int crc32_t;
+#define TOHEX "%.8X"
 #else
 #include <zlib.h>
 typedef uLong crc32_t;
+#define TOHEX "%.8lX"
 #endif
 
-char *perror_wrapper_self = NULL;
+#define SHOW_PROGRESS
+#define BUFSIZE 262144  /* 256k */
 
-static inline
-void progress(uInt n)
+char *self = NULL;
+int get_crc32_error = 0;
+
+#ifdef _MSC_VER
+/* not exaclty like the real POSIX function, but close enough */
+char *basename(char *path)
+{
+  char fname[_MAX_FNAME];
+  char ext[_MAX_EXT];
+
+  if (_splitpath_s(path, NULL, 0, NULL, 0, fname, _MAX_FNAME, ext, _MAX_EXT) != 0)
+  {
+    return NULL;
+  }
+  _snprintf_s(path, strlen(path), _TRUNCATE, "%s%s", fname, ext);
+
+  return path;
+}
+#endif
+
+#ifdef SHOW_PROGRESS
+void progress(unsigned int n)
 {
   char *l = "====================================================================================================";
   char *r = "----------------------------------------------------------------------------------------------------";
@@ -50,14 +76,14 @@ void progress(uInt n)
     fprintf(stderr, " %s \r", s);
   }
 }
+#endif
 
-static inline
 void perror_wrapper(char *ch)
 {
-  if (perror_wrapper_self)
+  if (self)
   {
     char error[4352] = {0};
-    snprintf(error, 4351, "%s: %s", perror_wrapper_self, ch);
+    snprintf(error, 4351, "%s: %s", self, ch);
     perror(error);
   }
   else
@@ -71,41 +97,42 @@ void perror_wrapper(char *ch)
  * from stb_crc32_block()
  */
 #ifdef STB_DEFINE
-static inline
-uInt crc32(uInt crc, const Bytef *buffer, uInt len)
+crc32_t crc32(crc32_t crc, Bytef *buffer, size_t len)
 {
-  static uInt crc_table[256];
-  uInt i, j, s;
+  crc32_t crc_table[256], i, j, s;
   crc = ~crc;
 
-  if (crc_table[1] == 0)
+  for (i = 0; i < 256; i++)
   {
-    for (i = 0; i < 256; i++)
+    for (s = i, j = 0; j < 8; ++j)
     {
-      for (s = i, j = 0; j < 8; ++j)
-      {
-        s = (s >> 1) ^ (s & 1 ? 0xedb88320 : 0);
-      }
-      crc_table[i] = s;
+      s = (s >> 1) ^ (s & 1 ? 0xEDB88320 : 0);
     }
+    crc_table[i] = s;
   }
 
   for (i = 0; i < len; ++i)
   {
-    crc = (crc >> 8) ^ crc_table[buffer[i] ^ (crc & 0xff)];
+    crc = (crc >> 8) ^ crc_table[buffer[i] ^ (crc & 0xFF)];
   }
+
   return ~crc;
 }
 #endif
 
-long get_crc32(char *file)
+crc32_t get_crc32(char *file)
 {
   FILE *fp;
   crc32_t crc;
-  Bytef buf[262144]; /* 256k */
+  Bytef buf[BUFSIZE];
+  size_t items;
+#ifdef SHOW_PROGRESS
   long fileSize = 0L;
-  long byteCount = 0L;
-  uInt completed = 0;
+  size_t byteCount = 0;
+  unsigned int completed = 0;
+#endif
+
+  get_crc32_error = 0;
 
   if (file == NULL)
   {
@@ -114,13 +141,15 @@ long get_crc32(char *file)
   }
   else
   {
-    /* open file for reading */
-    fp = fopen(file, "r");
+    /* open file for reading;
+     * do NOT omit the "b" on Windows! */
+    fp = fopen(file, "rb");
 
     if (fp == NULL)
     {
       perror_wrapper(file);
-      return -1;
+      get_crc32_error = 1;
+      return 0;
     }
 
     /* seek to end of file */
@@ -128,11 +157,14 @@ long get_crc32(char *file)
     {
       perror_wrapper(file);
       fclose(fp);
-      return -1;
+      get_crc32_error = 1;
+      return 0;
     }
 
+#ifdef SHOW_PROGRESS
     /* get filesize */
     fileSize = ftell(fp);
+#endif
 
     /* set position indicator back
      * to the beginning */
@@ -146,7 +178,7 @@ long get_crc32(char *file)
   while (feof(fp) == 0)
   {
     /* read data into buffer */
-    size_t items = fread(buf, sizeof(*buf), sizeof(buf)/sizeof(*buf), fp);
+    items = fread(buf, 1, BUFSIZE, fp);
 
     if (ferror(fp) != 0)
     {
@@ -155,14 +187,16 @@ long get_crc32(char *file)
       {
         fclose(fp);
       }
-      return -1;
+      get_crc32_error = 1;
+      return 0;
     }
 
+#ifdef SHOW_PROGRESS
     if (file != NULL)
     {
       /* calculate and print progress */
-      byteCount += (long)(items * sizeof(*buf));
-      uInt n = (uInt)((float)byteCount/(float)fileSize*100.0);
+      byteCount += items;
+      unsigned int n = (unsigned int)((float)byteCount/(float)fileSize*100.0);
 
       /* print only if the counter has changed */
       if (n > completed)
@@ -171,9 +205,10 @@ long get_crc32(char *file)
         progress(n);
       }
     }
+#endif
 
     /* calculate checksum and append to crc */
-    crc = crc32(crc, (const Bytef *)buf, (uInt)(items * sizeof(*buf)));
+    crc = crc32(crc, buf, items);
   }
 
   if (file != NULL)
@@ -181,45 +216,46 @@ long get_crc32(char *file)
     fclose(fp);
   }
 
-  return (long)crc;
+  return crc;
 }
 
 void crc_check(char *file)
 {
-  long crc = get_crc32(file);
+  crc32_t crc;
+  char crc_upper[9] = {0};
+  char crc_lower[9] = {0};
+  char *fname = NULL;
+  const char *match = "--";
 
-  if (crc != -1)
+  crc = get_crc32(file);
+
+  if (get_crc32_error == 0)
   {
     if (file == NULL)
     {
       /* input was stdin, just print the checksum */
-      printf("%.8lX\n", crc);
+      printf(TOHEX "\n", crc);
     }
     else
     {
-      char crc_upper[9] = {0};
-      char crc_lower[9] = {0};
-      snprintf(crc_upper, 9, "%.8lX", crc);
-      snprintf(crc_lower, 9, "%.8lx", crc);
+      fname = basename(strdup(file));
+      snprintf(crc_upper, 9, TOHEX, crc);
+      snprintf(crc_lower, 9, TOHEX, crc);
 
       /* check if the filename contains the checksum */
-      char *match;
-      if (strstr(basename(file), crc_upper) != NULL || strstr(basename(file), crc_lower) != NULL)
+      if (strstr(fname, crc_upper) || strstr(fname, crc_lower))
       {
         match = "OK";
       }
-      else
-      {
-        match = "--";
-      }
       printf("%s %s %s\n", crc_upper, match, file);
+      free(fname);
     }
   }
 }
 
 int main(int argc, char *argv[])
 {
-  perror_wrapper_self = basename(argv[0]);
+  self = basename(argv[0]);
 
   if (argc == 1)
   {
