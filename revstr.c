@@ -27,6 +27,25 @@ char *revstr(const char *s)
   return r;
 }
 
+/* alternate version to directly write into an array */
+/*
+void revstr(char *dest, const char *source)
+{
+  size_t i, j;
+
+  if (source)
+  {
+    j = strlen(source) - 1;
+
+    for (i = 0; i <= j; ++i)
+    {
+      dest[i] = source[j - i];
+    }
+    dest[i] = '\0';
+  }
+}
+*/
+
 int main(void)
 {
   const char *str = "abcdef";
