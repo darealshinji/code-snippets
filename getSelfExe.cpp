@@ -1,3 +1,4 @@
+#include <iostream>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,14 +12,16 @@ int main(void)
   char *rp = realpath("/proc/self/exe", NULL);
   int errsv = errno;
 
-  if (rp)
+  std::string resolved_path = rp ? std::string(rp) : "";
+  free(rp);
+
+  if (!resolved_path.empty())
   {
-    printf("%s\n", rp);
-    free(rp);
+    std::cout << resolved_path << std::endl;
   }
   else
   {
-    fprintf(stderr, "%s(): %s\n", __func__, strerror(errsv));
+    std::cerr << __func__ << "(): " << strerror(errsv) << std::endl;
     return 1;
   }
 
