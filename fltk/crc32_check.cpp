@@ -25,7 +25,6 @@
 #define WITH_ICON
 
 #include <FL/Fl.H>
-#include <FL/fl_ask.H>
 #include <FL/Fl_Box.H>
 #include <FL/Fl_Button.H>
 #include <FL/Fl_Multi_Browser.H>
@@ -44,7 +43,6 @@
 #include <string>
 #include <vector>
 
-#include <limits.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <string.h>
@@ -71,11 +69,8 @@ void *_null_ptr = NULL;
 class dnd_box : public Fl_Box
 {
 public:
-  dnd_box(int X, int Y, int W, int H)
-    : Fl_Box(X, Y, W, H) { }
-
-  virtual ~dnd_box() { }
-
+  dnd_box(int X, int Y, int W, int H) : Fl_Box(X, Y, W, H) {}
+  virtual ~dnd_box() {}
   int handle(int event);
 };
 
@@ -84,16 +79,8 @@ Fl_Multi_Browser *browser;
 Fl_Button *bt_copy, *bt_add;
 dnd_box *box;
 
-#define MAX_ENTRIES 1000
-std::string list[MAX_ENTRIES + 1];
-std::string list_bn[MAX_ENTRIES + 1];
-std::string list_crc[MAX_ENTRIES + 1];
-int current_line = 0;
-int itemcount = 0;
-bool max_reached = false;
-bool odd = true;
-
-#define WARNING "Maximum file entries reached!"
+std::vector<std::string> list, list_bn, list_crc;
+size_t current_line = 0, itemcount = 0;
 
 void dnd_callback(const char *items);
 void split(const std::string &s, char c, std::vector<std::string> &v);
@@ -108,23 +95,35 @@ int dnd_box::handle(int event)
     case FL_DND_RELEASE:
       ret = 1;
       break;
-    case FL_PASTE: {
-      if (max_reached) {
-        fl_alert(WARNING);
-      } else {
-        dnd_callback(Fl::event_text());
-      }
+    case FL_PASTE:
+      dnd_callback(Fl::event_text());
       ret = 1;
       break;
-    }
   }
   return ret;
 }
+
+/*
+std::string fltk_version()
+{
+  int version, major, minor, patch;
+  std::stringstream ss;
+
+  version = Fl::api_version();
+  major = version / 10000;
+  minor = (version % 10000) / 100;
+  patch = version % 100;
+
+  ss << major << "." << minor << "." << patch;
+  return ss.str();
+}
+*/
 
 void split(const std::string &s, char c, std::vector<std::string> &v)
 {
   size_t i = 0;
   size_t j = s.find(c);
+
   while (j != std::string::npos) {
     v.push_back(s.substr(i, j - i));
     i = ++j;
@@ -137,24 +136,24 @@ void split(const std::string &s, char c, std::vector<std::string> &v)
 
 void dnd_callback(const char *items)
 {
-  if (!max_reached && strncmp(items, "file:///", 8) == 0 && strlen(items) > 8) {
-    std::vector<std::string> vector;
-    split(std::string(items), '\n', vector);
+  if (strncmp(items, "file:///", 8) == 0 && strlen(items) > 8) {
+    std::vector<std::string> vec;
+    split(std::string(items), '\n', vec);
 
-    for (size_t i = 0; i < vector.size(); i++) {
-      char *line = strdup(vector[i].c_str() + 7);
+    for (size_t i = 0; i < vec.size(); i++) {
+      char *line = strdup(vec[i].c_str() + 7);
       fl_decode_uri(line);
 
       if (access(line, R_OK) == 0) {
         itemcount++;
-        if (itemcount <= MAX_ENTRIES) {
-          list[itemcount] = std::string(line);
-          char *bn = basename(line);
-          list_bn[itemcount] = bn ? std::string(bn) : "";
-          std::string s = "\t@." + list_bn[itemcount];
-          browser->add(s.c_str());
-          win->redraw();
-        }
+        list.push_back(std::string(line));
+
+        char *bn = basename(line);
+        list_bn.push_back(bn ? std::string(bn) : "");
+
+        std::string s = "\t@." + list_bn.back();
+        browser->add(s.c_str());
+        win->redraw();
       }
       free(line);
     }
@@ -164,7 +163,7 @@ void dnd_callback(const char *items)
 extern "C" void *get_crc_checksum(void *)
 {
   while (true) {
-    if (!max_reached && current_line < itemcount) {
+    if (current_line < itemcount) {
       current_line++;
 
       Fl::lock();
@@ -173,39 +172,34 @@ extern "C" void *get_crc_checksum(void *)
       Fl::awake(win);
 
       long crc = calculate_crc32(list[current_line].c_str());
-      std::string bg = odd ? "@B255" : "@B17";  /* white / light yellow */
+      std::string bg = (current_line % 2 == 1) ? "@B255" : "@B17";  /* white / light yellow */
       std::string entry = bg + "@f@c";
-      odd = odd ? false : true;
 
       if (crc == -1) {
-        entry += "88@.ERROR";  /* red */
+        entry += "@C88@.ERROR";  /* red */
+        list_crc.push_back("ERROR");  /* don't leave list_crc entry empty */
       } else {
         std::stringstream ss;
         ss << std::setfill('0') << std::setw(8) << std::hex << std::uppercase << crc;
-        list_crc[current_line] = ss.str();
+        list_crc.push_back(ss.str());
 
-        if (strcasestr(browser->text(current_line), list_crc[current_line].c_str())) {
+        if (strcasestr(browser->text(current_line), list_crc.back().c_str())) {
           entry += "@C60";  /* green */
         } else {
           entry += "@C88";  /* red */
         }
-        entry += "@." + list_crc[current_line];
+        entry += "@." + list_crc.back();
       }
       entry += "\t" + bg + "@." + list_bn[current_line];
 
       Fl::lock();
       browser->remove(current_line);
       browser->insert(current_line, entry.c_str());
-      if (current_line == MAX_ENTRIES) {
-        max_reached = true;
-        bt_add->deactivate();
-        fl_alert(WARNING);
-      }
       Fl::unlock();
       Fl::awake(win);
     }
 
-    usleep(100); /* needed, somehow... */
+    usleep(10); /* needed, somehow... */
   }
 
   return NULLPTR;
@@ -275,18 +269,17 @@ void browser_cb(Fl_Widget *) {
 
 void add_cb(Fl_Widget *)
 {
-  Fl_Native_File_Chooser gtk;
-  std::string entry;
+  Fl_Native_File_Chooser *gtk;
   const char *file = NULL, *title = "Select a file";
 
   if (getenv("KDE_FULL_SESSION")) {
     /* don't use GTK file chooser on KDE, there may be layout issues */
     file = fl_file_chooser(title, "*", NULL);
   } else {
-    gtk.title(title);
-    gtk.type(Fl_Native_File_Chooser::BROWSE_FILE);
-    if (gtk.show() == 0) {
-      file = gtk.filename();
+    gtk = new Fl_Native_File_Chooser(Fl_Native_File_Chooser::BROWSE_FILE);
+    gtk->title(title);
+    if (gtk->show() == 0) {
+      file = gtk->filename();
     }
   }
 
@@ -295,20 +288,19 @@ void add_cb(Fl_Widget *)
   }
 
   itemcount++;
-  list[itemcount] = std::string(file);
+  list.push_back(std::string(file));
+
   char *bn = basename((char *)file);
-  list_bn[itemcount] = bn ? std::string(bn) : "";
-  entry = "\t@." + list_bn[itemcount];
+  list_bn.push_back(bn ? std::string(bn) : "");
+
+  std::string entry = "\t@." + list_bn.back();
   browser->add(entry.c_str());
   win->redraw();
 }
 
 void copy_cb(Fl_Widget *) {
   const char *text = list_crc[browser->value()].c_str();
-  int len = strlen(text);
-  if (len == 8) {
-    Fl::copy(text, len, 1, Fl::clipboard_plain_text);
-  }
+  Fl::copy(text, strlen(text), 1, Fl::clipboard_plain_text);
 }
 
 void close_cb(Fl_Widget *) {
@@ -322,11 +314,20 @@ int main(void)
   Fl_Group *g;
   int winw = 640, winh = 400, butw = 90;
 
+  /* add an empty first entry, so that n in list[n]
+   * equals browser->value() and current_line */
+  list.push_back("");
+  list_bn.push_back("");
+  list_crc.push_back("");
+
   /* satisfying section 4 of the FLTK license's LGPL exception */
-  std::cout << "FLTK version " << FL_MAJOR_VERSION << "." << FL_MINOR_VERSION
-    << "." << FL_PATCH_VERSION << " (http://www.fltk.org)\n"
-    << "zlib version " ZLIB_VERSION << " (https://zlib.net)"
-    << std::endl;
+  std::cout << "FLTK version "
+    << FL_MAJOR_VERSION << "." << FL_MINOR_VERSION << "." << FL_PATCH_VERSION
+    //<< fltk_version()  /* get version at runtime */
+    << " (http://www.fltk.org)" << std::endl;
+
+  /* get zlib version at runtime */
+  std::cout << "zlib version " << zlibVersion() << " (https://zlib.net)" << std::endl;
 
 #ifdef WITH_ICON
   Fl_Pixmap pixmap(icon_xpm);
