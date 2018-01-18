@@ -9,10 +9,12 @@
 #ifdef UNICODE
 typedef std::wstring STRING;
 #define NPOS  std::wstring::npos
+#define COUT  std::wcout
 #define T(x)  L##x
 #else
 typedef std::string STRING;
 #define NPOS  std::string::npos
+#define COUT  std::cout
 #define T(x)  x
 #endif
 
@@ -61,23 +63,19 @@ STRING basename_dirname(STRING str, bool dir, bool win32)
 	return str;
 }
 
-STRING basename_unix(STRING str)
-{
+STRING basename_unix(STRING str) {
 	return basename_dirname(str, false, false);
 }
 
-STRING basename_win32(STRING str)
-{
+STRING basename_win32(STRING str) {
 	return basename_dirname(str, false, true);
 }
 
-STRING dirname_unix(STRING str)
-{
+STRING dirname_unix(STRING str) {
 	return basename_dirname(str, true, false);
 }
 
-STRING dirname_win32(STRING str)
-{
+STRING dirname_win32(STRING str) {
 	return basename_dirname(str, true, true);
 }
 
@@ -87,12 +85,7 @@ int main(void)
 	STRING path_unix = T("/usr/bin/bash");
 	STRING path_win32 = T("C:\\Windows\\explorer.exe");
 
-#ifdef UNICODE
-	std::wcout
-#else
-	std::cout
-#endif
-		<< "original       >>> " << path_unix
+	COUT << "original       >>> " << path_unix
 		<< "\nbasename_unix  >>> " << basename_unix(path_unix)
 		<< "\ndirname_unix   >>> " << dirname_unix(path_unix)
 		<< "\n\n"
