@@ -37,7 +37,6 @@
 #endif
 
 #include <sstream>
-#include <iostream>
 #include <iomanip>
 #include <ios>
 #include <string>
@@ -103,21 +102,16 @@ int dnd_box::handle(int event)
   return ret;
 }
 
-/*
 std::string fltk_version()
 {
-  int version, major, minor, patch;
   std::stringstream ss;
-
-  version = Fl::api_version();
-  major = version / 10000;
-  minor = (version % 10000) / 100;
-  patch = version % 100;
-
+  int version = Fl::api_version();
+  int major = version / 10000;
+  int minor = (version % 10000) / 100;
+  int patch = version % 100;
   ss << major << "." << minor << "." << patch;
   return ss.str();
 }
-*/
 
 void split(const std::string &s, char c, std::vector<std::string> &v)
 {
@@ -290,8 +284,10 @@ void add_cb(Fl_Widget *)
   itemcount++;
   list.push_back(std::string(file));
 
-  char *bn = basename((char *)file);
-  list_bn.push_back(bn ? std::string(bn) : "");
+  char *copy = strdup(file);
+  char *base = basename(copy);
+  list_bn.push_back(base ? std::string(base) : "");
+  free(copy);
 
   std::string entry = "\t@." + list_bn.back();
   browser->add(entry.c_str());
@@ -310,9 +306,20 @@ void close_cb(Fl_Widget *) {
 int main(void)
 {
   Fl_Button *bt_close;
-  Fl_Box *dummy;
+  Fl_Box *dummy, *info;
   Fl_Group *g;
-  int winw = 640, winh = 400, butw = 90;
+  int w = 640, h = 400, butw = 90;
+
+  /*
+  if (argc > 1) {
+    for (int i = 1; i < argc; i++) {
+      if (strcmp("-h", argv[i]) == 0 || strcmp("--help", argv[i]) == 0
+          || strcmp("-help", argv[i]) == 0) {
+        Fl::fatal("usage: %s [options]\n -h[elp]\n%s\n", argv[0], Fl::help);
+      }
+    }
+  }
+  */
 
   /* add an empty first entry, so that n in list[n]
    * equals browser->value() and current_line */
@@ -320,58 +327,59 @@ int main(void)
   list_bn.push_back("");
   list_crc.push_back("");
 
-  /* satisfying section 4 of the FLTK license's LGPL exception */
-  std::cout << "FLTK version "
-    << FL_MAJOR_VERSION << "." << FL_MINOR_VERSION << "." << FL_PATCH_VERSION
-    //<< fltk_version()  /* get version at runtime */
-    << " (http://www.fltk.org)" << std::endl;
-
-  /* get zlib version at runtime */
-  std::cout << "zlib version " << zlibVersion() << " (https://zlib.net)" << std::endl;
-
 #ifdef WITH_ICON
   Fl_Pixmap pixmap(icon_xpm);
   Fl_RGB_Image icon(&pixmap, Fl_Color(0));
   Fl_Window::default_icon(&icon);
 #endif
+  Fl::scheme("gtk+");
   Fl::visual(FL_DOUBLE|FL_INDEX);
   fl_message_title("Warning");
 
-  win = new Fl_Double_Window(winw, winh, "CRC32 Check - drag and drop files");
+  std::string version_info = "FLTK " + fltk_version() + " - http://fltk.org\n"
+    "zlib " + std::string(zlibVersion()) + " - https://zlib.net";
+
+  win = new Fl_Double_Window(w, h, "CRC32 Check - drag and drop files");
   {
     int column_widths[] = { 82, 0 };
-    browser = new Fl_Multi_Browser(10, 10, winw-20, winh-60);
+    browser = new Fl_Multi_Browser(10, 10, w - 20, h - 60);
     browser->column_widths(column_widths);
     browser->color(FL_WHITE);
     browser->callback(browser_cb);
 
-    box = new dnd_box(10, 10, winw-20, winh-60);
+    box = new dnd_box(10, 10, w - 20, h - 60);
     //box->tooltip("drag and drop files here");
 
-    g = new Fl_Group(0, winh-40, winw, winh-50);
+    g = new Fl_Group(0, h - 40, w, h - 50);
     {
-      dummy = new Fl_Box(0, winh-40, winw-butw*3-30, 30);
-      dummy->type(FL_NO_BOX);
+      bt_close = new Fl_Button(w - butw - 10, h - 40, butw, 30, "Close");
+      bt_close->callback(close_cb);
 
-      bt_copy = new Fl_Button(winw-butw*3-30, winh-40, butw, 30, "Copy CRC");
+      bt_add = new Fl_Button(bt_close->x() - butw - 10, h - 40, butw, 30, "Add file");
+      bt_add->callback(add_cb);
+
+      bt_copy = new Fl_Button(bt_add->x() - butw - 10, h - 40, butw, 30, "Copy CRC");
       bt_copy->deactivate();
       bt_copy->callback(copy_cb);
 
-      bt_add = new Fl_Button(winw-butw*2-20, winh-40, butw, 30, "Add file");
-      bt_add->callback(add_cb);
+      info = new Fl_Box(bt_copy->x() - 16, h - 40, 1, 30, version_info.c_str());
+      info->type(FL_NO_BOX);
+      info->align(FL_ALIGN_RIGHT|FL_ALIGN_INSIDE);
+      info->labelsize(11);
+      info->deactivate();  /* gray font */
 
-      bt_close = new Fl_Button(winw-butw-10, winh-40, butw, 30, "Close");
-      bt_close->callback(close_cb);
+      dummy = new Fl_Box(0, h - 40, w - info->x(), 30);
+      dummy->type(FL_NO_BOX);
     }
     g->resizable(dummy);
     g->end();
   }
   win->resizable(browser);
-  win->position((Fl::w()-win->w())/2, (Fl::h()-win->h())/2);
+  win->position((Fl::w() - w)/2, (Fl::h() - h)/2);
   win->end();
 
   Fl::lock();
-  win->show();
+  win->show(/* argc, argv */);
 
   pthread_t thread;
   pthread_create(&thread, 0, &get_crc_checksum, NULLPTR);
