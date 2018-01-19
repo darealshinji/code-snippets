@@ -79,7 +79,7 @@ Fl_Button *bt_copy, *bt_add;
 dnd_box *box;
 
 std::vector<std::string> list, list_bn, list_crc;
-size_t current_line = 0, itemcount = 0;
+int current_line = 0, itemcount = 0, crc_clipboard = 0;
 
 void dnd_callback(const char *items);
 void split(const std::string &s, char c, std::vector<std::string> &v);
@@ -295,11 +295,18 @@ void add_cb(Fl_Widget *)
 }
 
 void copy_cb(Fl_Widget *) {
-  const char *text = list_crc[browser->value()].c_str();
+  crc_clipboard = browser->value();
+  const char *text = list_crc[crc_clipboard].c_str();
   Fl::copy(text, strlen(text), 1, Fl::clipboard_plain_text);
 }
 
 void close_cb(Fl_Widget *) {
+  if (crc_clipboard > 0) {
+    /* hack: run xsel to keep the cliboard selection */
+    std::string cmd = "printf '" + list_crc[crc_clipboard] + "' | xsel -b";
+    int rv = system(cmd.c_str());
+    (void)rv;  /* ignore return value and silence compiler warning */
+  }
   win->hide();
 }
 
