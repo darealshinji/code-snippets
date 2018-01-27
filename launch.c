@@ -30,102 +30,42 @@
  * Useful for Unity 3D games. Compile with "-m32 -static".
  */
 
-#include <limits.h>
 #include <libgen.h>
-#include <stdio.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
-#include <sys/types.h>
 #include <sys/utsname.h>
-#include <sys/wait.h>
 #include <unistd.h>
 
 #ifndef PROG
 # define PROG "prog"
 #endif
 
-#define PRINT_ERROR(msg) fprintf(stderr, "error: " msg " \n")
-
-char getSelfExeBuf[PATH_MAX + 1];
-
-char *getSelfExe()
-{
-  memset(getSelfExeBuf, '\0', PATH_MAX + 1);
-  ssize_t size = readlink("/proc/self/exe", getSelfExeBuf, PATH_MAX);
-
-  if (size == -1)
-  {
-    return NULL;
-  }
-  return getSelfExeBuf;
-}
-
-int runCommand(const char *command)
-{
-  int status;
-  int rv = 127;
-  pid_t pid = fork();
-
-  if (pid == 0)
-  {
-    //execl("/bin/sh", "sh", "-c", command, (char *)NULL);
-    execl(command, command, (char *)NULL);
-    _exit(127);  /* if execl() was successful, this won't be reached */
-  }
-
-  if (pid > 0)
-  {
-    if (waitpid(pid, &status, 0) > 0)
-    {
-      if (WIFEXITED(status) == 1)
-      {
-        if ((rv = WEXITSTATUS(status)) == 127)
-        {
-          PRINT_ERROR("execl() failed");
-        }
-      }
-      else
-      {
-        PRINT_ERROR("the program did not terminate normally");
-      }
-    }
-    else
-    {
-      PRINT_ERROR("waitpid() failed");
-    }
-  }
-  else
-  {
-    PRINT_ERROR("failed to fork()");
-  }
-
-  return rv;
-}
-
-/**
- * Move into executable directory, get the machine type and
- * run "./PROG.x86_64" on x86_64, otherwise "./PROG.x86"
- */
 int main(void)
 {
-  struct utsname sysInfo;
-  char *self = getSelfExe();
-  int rv = 127;
+  struct utsname sysinfo;
+  const char *prog = PROG ".x86";
+  char *self, *dn, *path;
 
-  if (self != NULL && chdir(dirname(self)) != 0)
-  {
-    PRINT_ERROR("chdir()");
+  if ((self = realpath("/proc/self/exe", NULL)) == NULL) {
+    perror("realpath()");
+    return 1;
   }
 
-  if (uname(&sysInfo) == 0 && strcmp("x86_64", sysInfo.machine) == 0)
-  {
-    rv = runCommand("./" PROG ".x86_64");
-  }
-  else
-  {
-    rv = runCommand("./" PROG ".x86");
+  dn = dirname(self);
+  free(self);
+
+  if (uname(&sysinfo) == 0 && strcmp("x86_64", sysinfo.machine) == 0) {
+    prog = PROG ".x86_64";
   }
 
-  return rv;
+  path = malloc(strlen(dn) + 1 + strlen(prog));
+  sprintf(path, "%s/%s", dn, prog);
+
+  execl(path, path, (char *)NULL);
+  perror(path);
+  free(path);
+
+  return 1;
 }
 
