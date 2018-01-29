@@ -300,14 +300,16 @@ void copy_cb(Fl_Widget *) {
   Fl::copy(text, strlen(text), 1, Fl::clipboard_plain_text);
 }
 
-void close_cb(Fl_Widget *) {
+void close_cb(Fl_Widget *)
+{
+  win->hide();
+
   if (crc_clipboard > 0) {
     /* hack: run xsel to keep the cliboard selection */
-    std::string cmd = "printf '" + list_crc[crc_clipboard] + "' | xsel -b";
-    int rv = system(cmd.c_str());
-    (void)rv;  /* ignore return value and silence compiler warning */
+    std::string cmd = "printf " + list_crc[crc_clipboard] + " | xsel -b";
+    execl("/bin/sh", "sh", "-c", cmd.c_str(), (char *)NULL);
+    _exit(127);
   }
-  win->hide();
 }
 
 int main(void)
