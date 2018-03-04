@@ -177,7 +177,7 @@ extern "C" void *get_crc_checksum(void *)
         ss << std::setfill('0') << std::setw(8) << std::hex << std::uppercase << crc;
         list_crc.push_back(ss.str());
 
-        if (strcasestr(browser->text(current_line), list_crc.back().c_str())) {
+        if (strcasestr(list_bn[current_line].c_str(), list_crc.back().c_str())) {
           entry += "@C60";  /* green */
         } else {
           entry += "@C88";  /* red */
@@ -193,7 +193,8 @@ extern "C" void *get_crc_checksum(void *)
       Fl::awake(win);
     }
 
-    usleep(10); /* needed, somehow... */
+    /* don't optimize this loop out */
+    sleep(0);
   }
 
   return NULLPTR;
@@ -203,7 +204,7 @@ long calculate_crc32(const char *file)
 {
   FILE *fp;
   size_t items;
-  Bytef buf[262144]; /* 256k */
+  Bytef buf[524288]; /* 512k */
   long byteCount = 0L;
   uInt completed = 0;
 
@@ -317,7 +318,7 @@ int main(void)
   Fl_Button *bt_close;
   Fl_Box *dummy, *info;
   Fl_Group *g;
-  int w = 640, h = 400, butw = 90;
+  const int w = 640, h = 400, butw = 90;
 
   /*
   if (argc > 1) {
