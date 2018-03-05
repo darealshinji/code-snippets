@@ -36,9 +36,6 @@
 #include <FL/Fl_RGB_Image.H>
 #endif
 
-#include <sstream>
-#include <iomanip>
-#include <ios>
 #include <string>
 #include <vector>
 
@@ -65,6 +62,9 @@ void *_null_ptr = NULL;
 #define NULLPTR nullptr
 #endif
 
+#define XSTR(x) #x
+#define STR(x)  XSTR(x)
+
 class dnd_box : public Fl_Box
 {
 public:
@@ -75,14 +75,20 @@ public:
 
 Fl_Double_Window *win;
 Fl_Multi_Browser *browser;
-Fl_Button *bt_copy, *bt_add;
+Fl_Button *bt_copy, *bt_add, *bt_clear;
 dnd_box *box;
 
+pthread_t thread;
 std::vector<std::string> list, list_bn, list_crc;
-int current_line = 0, itemcount = 0, crc_clipboard = 0;
+int current_line = 0, itemcount = 0;
+char crc_clipboard[16] = {0};
+
+std::string bg[2] = {
+  "@B255", /* white */
+  "@B17"   /* light yellow */
+};
 
 void dnd_callback(const char *items);
-void split(const std::string &s, char c, std::vector<std::string> &v);
 long calculate_crc32(const char *file);
 
 int dnd_box::handle(int event)
@@ -102,8 +108,9 @@ int dnd_box::handle(int event)
   return ret;
 }
 
-std::string fltk_version()
+std::string fltk_version(void)
 {
+  /*
   std::stringstream ss;
   int version = Fl::api_version();
   int major = version / 10000;
@@ -111,6 +118,8 @@ std::string fltk_version()
   int patch = version % 100;
   ss << major << "." << minor << "." << patch;
   return ss.str();
+  */
+  return STR(FL_MAJOR_VERSION) "." STR(FL_MINOR_VERSION) "." STR(FL_PATCH_VERSION);
 }
 
 void split(const std::string &s, char c, std::vector<std::string> &v)
@@ -145,8 +154,10 @@ void dnd_callback(const char *items)
         char *bn = basename(line);
         list_bn.push_back(bn ? std::string(bn) : "");
 
-        std::string s = "\t@." + list_bn.back();
-        browser->add(s.c_str());
+        int j = itemcount % 2;
+        std::string entry = bg[j] + "\t" + bg[j] + "@." + list_bn.back();
+        browser->add(entry.c_str());
+        bt_clear->activate();
         win->redraw();
       }
       free(line);
@@ -154,51 +165,57 @@ void dnd_callback(const char *items)
   }
 }
 
+void get_crc_checksum_real(void)
+{
+  if (current_line < itemcount) {
+    current_line++;
+
+    Fl::lock();
+    browser->bottomline(current_line);
+    Fl::unlock();
+    Fl::awake(win);
+
+    int i = current_line % 2;
+    std::string entry = bg[i] + "@f@c";
+
+    long crc = calculate_crc32(list[current_line].c_str());
+
+    if (crc == -1) {
+      entry += "@C88@.ERROR";  /* red */
+      list_crc.push_back("ERROR");  /* don't leave list_crc entry empty */
+    } else {
+      char tmp[16] = {0};
+      snprintf(tmp, 8, "%08lX", crc);
+      list_crc.push_back(tmp);
+
+      if (strcasestr(list_bn[current_line].c_str(), list_crc.back().c_str())) {
+        entry += "@C60";  /* green */
+      } else {
+        entry += "@C88";  /* red */
+      }
+      entry += "@." + list_crc.back();
+    }
+    entry += "\t" + bg[i] + "@." + list_bn[current_line];
+
+    Fl::lock();
+    browser->remove(current_line);
+    browser->insert(current_line, entry.c_str());
+    Fl::unlock();
+    Fl::awake(win);
+  }
+}
+
+/* don't optimize this loop away */
+#pragma optimize ("O0")
 extern "C" void *get_crc_checksum(void *)
 {
   while (true) {
-    if (current_line < itemcount) {
-      current_line++;
-
-      Fl::lock();
-      browser->bottomline(current_line);
-      Fl::unlock();
-      Fl::awake(win);
-
-      long crc = calculate_crc32(list[current_line].c_str());
-      std::string bg = (current_line % 2 == 1) ? "@B255" : "@B17";  /* white / light yellow */
-      std::string entry = bg + "@f@c";
-
-      if (crc == -1) {
-        entry += "@C88@.ERROR";  /* red */
-        list_crc.push_back("ERROR");  /* don't leave list_crc entry empty */
-      } else {
-        std::stringstream ss;
-        ss << std::setfill('0') << std::setw(8) << std::hex << std::uppercase << crc;
-        list_crc.push_back(ss.str());
-
-        if (strcasestr(list_bn[current_line].c_str(), list_crc.back().c_str())) {
-          entry += "@C60";  /* green */
-        } else {
-          entry += "@C88";  /* red */
-        }
-        entry += "@." + list_crc.back();
-      }
-      entry += "\t" + bg + "@." + list_bn[current_line];
-
-      Fl::lock();
-      browser->remove(current_line);
-      browser->insert(current_line, entry.c_str());
-      Fl::unlock();
-      Fl::awake(win);
-    }
-
-    /* don't optimize this loop out */
-    sleep(0);
+    get_crc_checksum_real();
+    usleep(10000); /* 10ms */
   }
-
   return NULLPTR;
 }
+#pragma reset_options
 
 long calculate_crc32(const char *file)
 {
@@ -237,14 +254,15 @@ long calculate_crc32(const char *file)
       uInt n = (uInt)((float)byteCount/(float)fileSize*100.0);
 
       if (n > completed && n < 100) {
-        std::stringstream ss;
         completed = n;
-        ss << completed;
-        std::string s = "@f@c" + ss.str() + "%\t@." + list_bn[current_line];
+        int i = current_line % 2;
+        char tmp[4] = {0};
+        snprintf(tmp, 3, "%d", completed);
+        std::string entry = bg[i] + "@f@c" + tmp + "%\t" + bg[i] + "@." + list_bn[current_line];
 
         Fl::lock();
         browser->remove(current_line);
-        browser->insert(current_line, s.c_str());
+        browser->insert(current_line, entry.c_str());
         Fl::unlock();
         Fl::awake(win);
       }
@@ -256,13 +274,13 @@ long calculate_crc32(const char *file)
   return (long)crc;
 }
 
-void browser_cb(Fl_Widget *) {
+static void browser_cb(Fl_Widget *) {
   if (itemcount > 0 && !bt_copy->active()) {
     bt_copy->activate();
   }
 }
 
-void add_cb(Fl_Widget *)
+static void add_cb(Fl_Widget *)
 {
   Fl_Native_File_Chooser *gtk;
   const char *file = NULL, *title = "Select a file";
@@ -290,25 +308,50 @@ void add_cb(Fl_Widget *)
   list_bn.push_back(base ? std::string(base) : "");
   free(copy);
 
-  std::string entry = "\t@." + list_bn.back();
+  int i = itemcount % 2;
+  std::string entry = bg[i] + "\t" + bg[i] + "@." + list_bn.back();
   browser->add(entry.c_str());
+  bt_clear->activate();
   win->redraw();
 }
 
-void copy_cb(Fl_Widget *) {
-  crc_clipboard = browser->value();
-  const char *text = list_crc[crc_clipboard].c_str();
+static void copy_cb(Fl_Widget *) {
+  const char *text = "";
+  if (browser->value() <= current_line) {
+    text = strncpy(crc_clipboard, list_crc[browser->value()].c_str(), 8);
+  }
   Fl::copy(text, strlen(text), 1, Fl::clipboard_plain_text);
 }
 
-void close_cb(Fl_Widget *)
+static void clear_cb(Fl_Widget *)
 {
+  pthread_cancel(thread);
+
+  list.clear();
+  list_bn.clear();
+  list_crc.clear();
+  list.push_back("");
+  list_bn.push_back("");
+  list_crc.push_back("");
+  current_line = itemcount = 0;
+
+  browser->clear();
+  bt_copy->deactivate();
+  bt_clear->deactivate();
+  win->redraw();
+  pthread_create(&thread, 0, &get_crc_checksum, NULLPTR);
+}
+
+static void close_cb(Fl_Widget *)
+{
+  pthread_cancel(thread);
   win->hide();
 
-  if (crc_clipboard > 0) {
+  if (strlen(crc_clipboard) > 0) {
     /* hack: run xsel to keep the cliboard selection */
-    std::string cmd = "printf " + list_crc[crc_clipboard] + " | xsel -b";
-    execl("/bin/sh", "sh", "-c", cmd.c_str(), (char *)NULL);
+    char cmd[32] = {0};
+    snprintf(cmd, 31, "printf %s | xsel -b", crc_clipboard);
+    execl("/bin/sh", "sh", "-c", cmd, (char *)NULL);
     _exit(127);
   }
 }
@@ -319,17 +362,6 @@ int main(void)
   Fl_Box *dummy, *info;
   Fl_Group *g;
   const int w = 640, h = 400, butw = 90;
-
-  /*
-  if (argc > 1) {
-    for (int i = 1; i < argc; i++) {
-      if (strcmp("-h", argv[i]) == 0 || strcmp("--help", argv[i]) == 0
-          || strcmp("-help", argv[i]) == 0) {
-        Fl::fatal("usage: %s [options]\n -h[elp]\n%s\n", argv[0], Fl::help);
-      }
-    }
-  }
-  */
 
   /* add an empty first entry, so that n in list[n]
    * equals browser->value() and current_line */
@@ -358,7 +390,6 @@ int main(void)
     browser->callback(browser_cb);
 
     box = new dnd_box(10, 10, w - 20, h - 60);
-    //box->tooltip("drag and drop files here");
 
     g = new Fl_Group(0, h - 40, w, h - 50);
     {
@@ -368,7 +399,11 @@ int main(void)
       bt_add = new Fl_Button(bt_close->x() - butw - 10, h - 40, butw, 30, "Add file");
       bt_add->callback(add_cb);
 
-      bt_copy = new Fl_Button(bt_add->x() - butw - 10, h - 40, butw, 30, "Copy CRC");
+      bt_clear = new Fl_Button(bt_add->x() - butw - 10, h - 40, butw, 30, "Clear");
+      bt_clear->deactivate();
+      bt_clear->callback(clear_cb);
+
+      bt_copy = new Fl_Button(bt_clear->x() - butw - 10, h - 40, butw, 30, "Copy CRC");
       bt_copy->deactivate();
       bt_copy->callback(copy_cb);
 
@@ -389,9 +424,8 @@ int main(void)
   win->end();
 
   Fl::lock();
-  win->show(/* argc, argv */);
+  win->show();
 
-  pthread_t thread;
   pthread_create(&thread, 0, &get_crc_checksum, NULLPTR);
 
   return Fl::run();
