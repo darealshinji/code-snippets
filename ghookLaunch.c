@@ -7,25 +7,24 @@
 // On Linux you simply use a shell script like this:
 //
 // #!/bin/sh
-// email="runner@speedrungames.com"
-// cdkey="XXXXX-XXXXX-XXXXX-XXXXX-XXXXX"
-// tuser="XXXXXXXXXXXXXXXXXXXXXX\\=\\="
+// email="free@grapplinghook.de"
+// cdkey="5Q2CW-PLX3E-2T2R1-61SPH-NZ13P"
+// tuser="fsGFBTEI7XIkjzkh/cpZug\\=\\="
 // cfg="$HOME/.GrapplingHook/properties.cfg"
 // mkdir -p "$HOME/.GrapplingHook"
 // touch "$cfg"
 // sed -i "/^EMAIL=.*/d; /^CDKEY=.*/d; /^TUSER=.*/d" "$cfg"
 // printf "\nEMAIL=$email\nCDKEY=$cdkey\nTUSER=$tuser\n" >> "$cfg"
 // cd "${0%/*}"
-// java -Xms128m -Xmx256m -Djava.library.path=lib -Dfile,encoding=UTF-8 \
-//   -cp lib/bin.jar:lib/lwjgl.jar:lib/lwjgl_util.jar:lib/jogg-0.0.7.jar:lib/jorbis-0.0.15.jar ghook/GHookGame
+// java -Xms128m -Xmx256m -Djava.library.path=lib -Dfile,encoding=UTF-8 -cp lib/bin.jar:lib/lwjgl.jar:lib/lwjgl_util.jar:lib/jogg-0.0.7.jar:lib/jorbis-0.0.15.jar ghook/GHookGame
 
 /**
  * Compile with GCC/MinGW:
- *   windres ghook.res ghook_res.o
- *   gcc -m32 -static -Wall -O3 -mwindows ghookLaunch.c ghook_res.o -o launch.exe -luser32 -lshell32 -lshlwapi -s
+ *   windres ghookLaunch.res ghookLaunch_res.o
+ *   gcc -m32 -static -Wall -O3 -mwindows ghookLaunch.c ghookLaunch_res.o -o launch.exe -luser32 -lshell32 -lshlwapi -s
  *
  * Compile with MSVC:
- *   cl /Ox /GS /guard:cf ghookLaunch.c /link /out:launch.exe ghook.res user32.lib shell32.lib shlwapi.lib
+ *   cl /Ox /GS /guard:cf ghookLaunch.c /link /out:launch.exe ghookLaunch.res user32.lib shell32.lib shlwapi.lib
  */
 
 #include <windows.h>
@@ -34,12 +33,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-/**
- * #define EMAIL "runner@speedrungames.com"
- * #define CDKEY "XXXXX-XXXXX-XXXXX-XXXXX-XXXXX"
- * #define TUSER "XXXXXXXXXXXXXXXXXXXXXX\\=\\="
- */
-#include "keyData.h"
+#define EMAIL "free@grapplinghook.de"
+#define CDKEY "5Q2CW-PLX3E-2T2R1-61SPH-NZ13P"
+#define TUSER "fsGFBTEI7XIkjzkh/cpZug\\=\\="
 
 #define BUFSIZE 32767
 #define CUSTOM_MAX_PATH 4096
