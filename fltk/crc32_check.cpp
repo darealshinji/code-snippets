@@ -411,7 +411,7 @@ int main(void)
       info->labelsize(11);
       info->deactivate();  /* gray font */
 
-      dummy = new Fl_Box(0, h - 40, w - info->x(), 30);
+      dummy = new Fl_Box(0, h - 40, 1, 30);
       dummy->type(FL_NO_BOX);
     }
     g->resizable(dummy);
