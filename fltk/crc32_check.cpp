@@ -78,7 +78,7 @@ Fl_Multi_Browser *browser;
 Fl_Button *bt_copy, *bt_add, *bt_clear;
 dnd_box *box;
 
-pthread_t thread;
+pthread_t t1;
 std::vector<std::string> list, list_bn, list_crc;
 int current_line = 0, itemcount = 0;
 char crc_clipboard[16] = {0};
@@ -89,7 +89,6 @@ std::string bg[2] = {
 };
 
 void dnd_callback(const char *items);
-long calculate_crc32(const char *file);
 
 int dnd_box::handle(int event)
 {
@@ -145,24 +144,79 @@ void dnd_callback(const char *items)
 
     for (size_t i = 0; i < vec.size(); i++) {
       char *line = strdup(vec[i].c_str() + 7);
-      fl_decode_uri(line);
-
-      if (access(line, R_OK) == 0) {
+      if (line) {
+        fl_decode_uri(line);
+      }
+      if (line) {
         itemcount++;
-        list.push_back(std::string(line));
 
+        std::string s(line);
+        list.push_back(s);
         char *bn = basename(line);
-        list_bn.push_back(bn ? std::string(bn) : "");
-
+        list_bn.push_back(bn ? std::string(bn) : s);
         int j = itemcount % 2;
         std::string entry = bg[j] + "\t" + bg[j] + "@." + list_bn.back();
+
         browser->add(entry.c_str());
         bt_clear->activate();
         win->redraw();
+        free(line);
       }
-      free(line);
     }
   }
+}
+
+long calculate_crc32(const char *file)
+{
+  FILE *fp;
+  size_t items;
+  Bytef buf[524288]; /* 512k */
+  long byteCount = 0L;
+  uInt completed = 0;
+
+  if (!(fp = fopen(file, "r"))) {
+    return -1;
+  }
+
+  if (fseek(fp, 0, SEEK_END) == -1) {
+    fclose(fp);
+    return -1;
+  }
+
+  long fileSize = ftell(fp);
+  rewind(fp);
+
+  uLong crc = crc32(0, NULL, 0);
+
+  while (feof(fp) == 0) {
+    items = fread(buf, sizeof(*buf), sizeof(buf)/sizeof(*buf), fp);
+
+    if (ferror(fp) != 0) {
+      fclose(fp);
+      return -1;
+    }
+
+    byteCount += (long)(items * sizeof(*buf));
+    uInt n = (uInt)((float)byteCount/(float)fileSize*100.0);
+
+    if (n > completed && n < 100) {
+      completed = n;
+      int i = current_line % 2;
+      char tmp[4] = {0};
+      snprintf(tmp, 3, "%d", completed);
+      std::string entry = bg[i] + "@f@c" + tmp + "%\t" + bg[i] + "@." + list_bn[current_line];
+
+      Fl::lock();
+      browser->remove(current_line);
+      browser->insert(current_line, entry.c_str());
+      Fl::unlock();
+      Fl::awake(win);
+    }
+
+    crc = crc32(crc, (const Bytef *)buf, (uInt)(items * sizeof(*buf)));
+  }
+
+  return (long)crc;
 }
 
 void get_crc_checksum_real(void)
@@ -205,8 +259,10 @@ void get_crc_checksum_real(void)
   }
 }
 
-/* don't optimize this loop away */
-#pragma optimize ("O0")
+extern "C" void *get_crc_checksum(void *)
+  /* don't optimize this loop away */
+  __attribute__ ((optimize("-O0")));
+
 extern "C" void *get_crc_checksum(void *)
 {
   while (true) {
@@ -214,64 +270,6 @@ extern "C" void *get_crc_checksum(void *)
     usleep(10000); /* 10ms */
   }
   return NULLPTR;
-}
-#pragma reset_options
-
-long calculate_crc32(const char *file)
-{
-  FILE *fp;
-  size_t items;
-  Bytef buf[524288]; /* 512k */
-  long byteCount = 0L;
-  uInt completed = 0;
-
-  if (!(fp = fopen(file, "r"))) {
-    return -1;
-  }
-
-  if (fseek(fp, 0, SEEK_END) == -1) {
-    fclose(fp);
-    return -1;
-  }
-
-  long fileSize = ftell(fp);
-  rewind(fp);
-
-  uLong crc = crc32(0, NULL, 0);
-
-  while (feof(fp) == 0) {
-    items = fread(buf, sizeof(*buf), sizeof(buf)/sizeof(*buf), fp);
-
-    if (ferror(fp) != 0) {
-      if (file) {
-        fclose(fp);
-      }
-      return -1;
-    }
-
-    if (file) {
-      byteCount += (long)(items * sizeof(*buf));
-      uInt n = (uInt)((float)byteCount/(float)fileSize*100.0);
-
-      if (n > completed && n < 100) {
-        completed = n;
-        int i = current_line % 2;
-        char tmp[4] = {0};
-        snprintf(tmp, 3, "%d", completed);
-        std::string entry = bg[i] + "@f@c" + tmp + "%\t" + bg[i] + "@." + list_bn[current_line];
-
-        Fl::lock();
-        browser->remove(current_line);
-        browser->insert(current_line, entry.c_str());
-        Fl::unlock();
-        Fl::awake(win);
-      }
-    }
-
-    crc = crc32(crc, (const Bytef *)buf, (uInt)(items * sizeof(*buf)));
-  }
-
-  return (long)crc;
 }
 
 static void browser_cb(Fl_Widget *) {
@@ -283,7 +281,8 @@ static void browser_cb(Fl_Widget *) {
 static void add_cb(Fl_Widget *)
 {
   Fl_Native_File_Chooser *gtk;
-  const char *file = NULL, *title = "Select a file";
+  const char *file = NULL;
+  const char *title = "Select a file";
 
   if (getenv("KDE_FULL_SESSION")) {
     /* don't use GTK file chooser on KDE, there may be layout issues */
@@ -305,17 +304,17 @@ static void add_cb(Fl_Widget *)
 
   char *copy = strdup(file);
   char *base = basename(copy);
-  list_bn.push_back(base ? std::string(base) : "");
+  list_bn.push_back(base ? std::string(base) : std::string(copy));
   free(copy);
 
   int i = itemcount % 2;
   std::string entry = bg[i] + "\t" + bg[i] + "@." + list_bn.back();
   browser->add(entry.c_str());
   bt_clear->activate();
-  win->redraw();
 }
 
-static void copy_cb(Fl_Widget *) {
+static void copy_cb(Fl_Widget *)
+{
   const char *text = "";
   if (browser->value() <= current_line) {
     text = strncpy(crc_clipboard, list_crc[browser->value()].c_str(), 8);
@@ -325,7 +324,7 @@ static void copy_cb(Fl_Widget *) {
 
 static void clear_cb(Fl_Widget *)
 {
-  pthread_cancel(thread);
+  pthread_cancel(t1);
 
   list.clear();
   list_bn.clear();
@@ -339,16 +338,16 @@ static void clear_cb(Fl_Widget *)
   bt_copy->deactivate();
   bt_clear->deactivate();
   win->redraw();
-  pthread_create(&thread, 0, &get_crc_checksum, NULLPTR);
+  pthread_create(&t1, 0, &get_crc_checksum, NULLPTR);
 }
 
 static void close_cb(Fl_Widget *)
 {
-  pthread_cancel(thread);
+  pthread_cancel(t1);
   win->hide();
 
   if (strlen(crc_clipboard) > 0) {
-    /* hack: run xsel to keep the cliboard selection */
+    /* hack: run xsel to keep the clipboard selection */
     char cmd[32] = {0};
     snprintf(cmd, 31, "printf %s | xsel -b", crc_clipboard);
     execl("/bin/sh", "sh", "-c", cmd, (char *)NULL);
@@ -376,7 +375,6 @@ int main(void)
 #endif
   Fl::scheme("gtk+");
   Fl::visual(FL_DOUBLE|FL_INDEX);
-  fl_message_title("Warning");
 
   std::string version_info = "FLTK " + fltk_version() + " - http://fltk.org\n"
     "zlib " + std::string(zlibVersion()) + " - https://zlib.net";
@@ -426,7 +424,7 @@ int main(void)
   Fl::lock();
   win->show();
 
-  pthread_create(&thread, 0, &get_crc_checksum, NULLPTR);
+  pthread_create(&t1, 0, &get_crc_checksum, NULLPTR);
 
   return Fl::run();
 }
