@@ -44,22 +44,22 @@ basename (char *path)
     /* allocate sufficient local storage space,
      * in which to create a wide character reference copy of path
      */
-#ifdef _MSC_VER
     len = mbstowcs (NULL, path, 0);
+#ifdef _MSC_VER
 # ifdef __cplusplus
     wchar_t *refcopy = new wchar_t[1 + len];
 # else
     wchar_t refcopy[ASSUMED_MAX_PATH];
 # endif
 #else
-    wchar_t refcopy[1 + (len = mbstowcs (NULL, path, 0))];
+    wchar_t refcopy[1 + len];
 #endif
     /* create the wide character reference copy of path,
      * and step over the drive designator, if present ...
      */
     wchar_t *refpath = refcopy;
 
-    len = mbstowcs( refpath, path, len);
+    len = mbstowcs (refpath, path, len);
 //  if (len > 1 && refpath[1] == L':')
 //  {
 //    /* FIXME: maybe should confirm *refpath is a valid drive designator */
@@ -163,16 +163,15 @@ dirname(char *path)
   {
     /* allocate sufficient local storage space,
      * in which to create a wide character reference copy of path.  */
-    //wchar_t refcopy[1 + (len = mbstowcs (NULL, path, 0))];
-#ifdef _MSC_VER
     len = mbstowcs (NULL, path, 0);
+#ifdef _MSC_VER
 # ifdef __cplusplus
     wchar_t *refcopy = new wchar_t[1 + len];
 # else
     wchar_t refcopy[ASSUMED_MAX_PATH];
 # endif
 #else
-    wchar_t refcopy[1 + (len = mbstowcs (NULL, path, 0))];
+    wchar_t refcopy[1 + len];
 #endif
     /* create the wide character reference copy of path */
     wchar_t *refpath = refcopy;
