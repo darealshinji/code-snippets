@@ -278,22 +278,29 @@ static void browser_cb(Fl_Widget *) {
   }
 }
 
+/* GTK file chooser and multi-threading doesn't work so well;
+ * disabling it might be a good idea */
+#define WITH_GTK
+
 static void add_cb(Fl_Widget *)
 {
-  Fl_Native_File_Chooser *gtk;
   const char *file = NULL;
   const char *title = "Select a file";
 
+#ifndef WITH_GTK
+  file = fl_file_chooser(title, "*", NULL);
+#else
   if (getenv("KDE_FULL_SESSION")) {
     /* don't use GTK file chooser on KDE, there may be layout issues */
     file = fl_file_chooser(title, "*", NULL);
   } else {
-    gtk = new Fl_Native_File_Chooser(Fl_Native_File_Chooser::BROWSE_FILE);
+    Fl_Native_File_Chooser *gtk = new Fl_Native_File_Chooser(Fl_Native_File_Chooser::BROWSE_FILE);
     gtk->title(title);
     if (gtk->show() == 0) {
       file = gtk->filename();
     }
   }
+#endif
 
   if (!file) {
     return;
