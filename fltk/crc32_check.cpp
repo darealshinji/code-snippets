@@ -426,6 +426,7 @@ int main(void)
   }
   win->resizable(browser);
   win->position((Fl::w() - w)/2, (Fl::h() - h)/2);
+  win->callback(close_cb);
   win->end();
 
   Fl::lock();
