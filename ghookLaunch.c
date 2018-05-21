@@ -33,6 +33,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+/* official freeware key:
+ * https://www.speedrungames.com/?p=725
+ * https://grapplinghook.de/download_form.php
+ */
 #define EMAIL "free@grapplinghook.de"
 #define CDKEY "5Q2CW-PLX3E-2T2R1-61SPH-NZ13P"
 #define TUSER "fsGFBTEI7XIkjzkh/cpZug\\=\\="
