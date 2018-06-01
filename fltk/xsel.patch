@@ -1,0 +1,62 @@
+diff --git a/xsel.c b/xsel.c
+index bc8337b..84fa6e6 100644
+--- a/xsel.c
++++ b/xsel.c
+@@ -2014,7 +2014,56 @@ expand_argv(int * argc, char **argv[])
+  * output before being replaced by the contents of standard input.
+  */
+ int
+-main(int argc, char *argv[])
++xsel_main(int argc, char *argv[])
++{
++  char * display_name = NULL;
++  unsigned char * sel = NULL;
++
++  progname = argv[0];
++
++  if (argc != 2) {
++    return 1;
++  }
++
++  sel = (unsigned char *)argv[1];
++
++  display = XOpenDisplay (display_name);
++  if (display==NULL) {
++    exit_err ("Can't open display: %s\n", display_name ? display_name : "(null)");
++  }
++
++  /* Create an unmapped window for receiving events */
++  int black = BlackPixel (display, DefaultScreen (display));
++  window = XCreateSimpleWindow (display, XDefaultRootWindow (display), 0, 0, 1, 1, 0, black, black);
++
++  /* Get the maximum incremental selection size in bytes */
++  /*max_req = MAX_SELECTION_INCR (display);*/
++  max_req = 4000;
++
++  Atom selection = XInternAtom (display, "CLIPBOARD", False);
++
++  if (sel == NULL || sel[0] == '\0') {
++    /* clear selection */
++    XSetSelectionOwner (display, selection, None, timestamp);
++    /* Call XSync to ensure this operation completes before program
++     * termination, especially if this is all we are doing. */
++    XSync (display, False);
++    return 1;
++  }
++
++  become_daemon ();
++
++  set_selection (selection, sel);
++
++  return 0;
++}
++
++#ifndef VERSION
++#define VERSION "1.2.0"
++#endif
++
++int
++main_old(int argc, char *argv[])
+ {
+   Bool show_version = False;
+   Bool show_help = False;

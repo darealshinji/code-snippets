@@ -36,6 +36,7 @@
 #include <FL/Fl_RGB_Image.H>
 #endif
 
+#include <iostream>
 #include <string>
 #include <vector>
 
@@ -44,6 +45,12 @@
 #include <string.h>
 #include <unistd.h>
 #include <zlib.h>
+
+//#define HAVE_XSEL_INTERNAL
+#ifdef HAVE_XSEL_INTERNAL
+extern "C" int xsel_main(int argc, char *argv[]);
+static char *progname;
+#endif
 
 /**
  * Icon source:
@@ -144,10 +151,10 @@ void dnd_callback(const char *items)
 
     for (size_t i = 0; i < vec.size(); i++) {
       char *line = strdup(vec[i].c_str() + 7);
-      if (line) {
+      if (line && line[0] != '\0') {
         fl_decode_uri(line);
       }
-      if (line) {
+      if (line && line[0] != '\0') {
         itemcount++;
 
         std::string s(line);
@@ -239,7 +246,7 @@ void get_crc_checksum_real(void)
       list_crc.push_back("ERROR");  /* don't leave list_crc entry empty */
     } else {
       char tmp[16] = {0};
-      snprintf(tmp, 8, "%08lX", crc);
+      snprintf(tmp, 9, "%08lX", crc);
       list_crc.push_back(tmp);
 
       if (strcasestr(list_bn[current_line].c_str(), list_crc.back().c_str())) {
@@ -354,20 +361,29 @@ static void close_cb(Fl_Widget *)
   win->hide();
 
   if (strlen(crc_clipboard) > 0) {
-    /* hack: run xsel to keep the clipboard selection */
+#ifdef HAVE_XSEL_INTERNAL
+    Fl::flush();
+    char *fake_argv[] = { progname, crc_clipboard, (char *)NULL };
+    xsel_main(2, fake_argv);
+#else
     char cmd[32] = {0};
     snprintf(cmd, 31, "printf %s | xsel -b", crc_clipboard);
     execl("/bin/sh", "sh", "-c", cmd, (char *)NULL);
     _exit(127);
+#endif
   }
 }
 
-int main(void)
+int main(int argc, char *argv[])
 {
   Fl_Button *bt_close;
   Fl_Box *dummy, *info;
   Fl_Group *g;
   const int w = 640, h = 400, butw = 90;
+
+#ifdef HAVE_XSEL_INTERNAL
+  progname = argv[0];
+#endif
 
   /* add an empty first entry, so that n in list[n]
    * equals browser->value() and current_line */
