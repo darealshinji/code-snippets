@@ -7,58 +7,60 @@
 #include <string.h>
 #include <unistd.h>
 
-int main(int argc, char *argv[])
+char *which(const char *command)
 {
-  char *env, *env_copy, *str, *token, *file;
-  int i, j, len, rv = 0;
+  size_t len, i;
+  char *env, *env_copy, *str;
 
-  if (argc < 2)
-  {
-    return 1;
+  if (!command || (len = strlen(command)) == 0 || (env = getenv("PATH")) == NULL) {
+    return NULL;
   }
 
-  env = getenv("PATH");
+  env_copy = strdup(env);
 
-  if (!env)
-  {
-    fprintf(stderr, "error: environment variable PATH not found!\n");
-    return 1;
-  }
+  /**
+   * though not really needed, stop after 999 iterations
+   * to prevent any potential endless loop
+   */
+  for (i = 0, str = env_copy; i < 999; ++i, str = NULL) {
+    char *token = strtok(str, ":");
 
-  for (i = 1; i < argc; ++i)
-  {
-    env_copy = strdup(env);
-
-    /**
-     * though not really needed, stop after 9999 iterations
-     * to prevent any potential endless loop
-     */
-    for (j = 0, str = env_copy; j < 9999; ++j, str = NULL)
-    {
-      len = strlen(argv[i]);
-      token = strtok(str, ":");
-
-      if (token == NULL || len == 0)
-      {
-        rv = 1;
-        break;
-      }
-
-      file = malloc(strlen(token) + len + 2);
-      sprintf(file, "%s/%s", token, argv[i]);
-
-      if (access(file, R_OK|X_OK) == 0)
-      {
-        printf("%s\n", file);
-        free(file);
-        break;
-      }
-      free(file);
+    if (!token) {
+      free(env_copy);
+      return NULL;
     }
 
-    free(env_copy);
+    char *file = malloc(strlen(token) + len + 2);
+    sprintf(file, "%s/%s", token, command);
+
+    if (access(file, R_OK|X_OK) == 0) {
+      free(env_copy);
+      return file;
+    }
+    free(file);
+  }
+  free(env_copy);
+
+  return NULL;
+}
+
+int main(int argc, char *argv[])
+{
+  char *path;
+  int rv = 1;
+
+  if (argc < 2) {
+    return 1;
   }
 
+  for (int i = 1; i < argc; i++) {
+    path = which(argv[i]);
+    if (path) {
+      rv = 0;
+      printf("%s\n", path);
+      free(path);
+    }
+  }
   return rv;
 }
 
