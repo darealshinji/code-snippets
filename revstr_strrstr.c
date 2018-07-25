@@ -11,6 +11,11 @@
  */
 char *revstr(const char *s);
 
+/* Alternate version to directly write into an array.
+ * Returns a pointer to the array.
+ */
+char *revstr2(char *dest, size_t szdest, const char *source);
+
 /* Finds the LAST occurrence of the substring needle in the string haystack.
  * It returns a pointer to the beginning of the located substring, or NULL
  * if the substring is not found.
@@ -43,24 +48,32 @@ char *revstr(const char *s)
   return r;
 }
 
-/* alternate version to directly write into an array */
-/*
-void revstr(char *dest, const char *source)
+char *revstr2(char *dest, size_t szdest, const char *source)
 {
-  size_t i, j;
+  size_t i, j, k;
+  char *s = NULL;
 
   if (source)
   {
     j = strlen(source) - 1;
+    k = szdest - 1;
+
+    if (k < j)
+    {
+      j = k;
+    }
 
     for (i = 0; i <= j; ++i)
     {
       dest[i] = source[j - i];
     }
     dest[i] = '\0';
+
+    s = dest;
   }
+
+  return s;
 }
-*/
 
 char *_strrstr(const char *hs, const char *ndl, char ic)
 {
@@ -88,10 +101,12 @@ char *strrcasestr(const char *haystack, const char *needle)
 int main(void)
 {
   const char *str = "Hello world! Why does the world never response? WHY?";
-  char *rev = NULL;
+  char *rev = NULL, *rev2 = NULL;
+  char arr[8] = {0};
 
-  printf("\nstr = \"%s\"\n\n", str);
+  printf("\nstr = \"%s\"\nsizeof(arr) = %ld\n\n", str, sizeof(arr));
   printf("revstr(str)\n>>> %s\n\n", rev = revstr(str));
+  printf("revstr2(arr, sizeof(arr), str)\n>>> %s\n\n", rev2 = revstr2(arr, sizeof(arr), str));
   printf("strstr(str, \"world\")\n>>> \"%s\"\n\n", strstr(str, "world"));
   printf("strrstr(str, \"world\")\n>>> \"%s\"\n\n", strrstr(str, "world"));
   printf("strcasestr(str, \"wHy\")\n>>> \"%s\"\n\n", strcasestr(str, "wHy"));
