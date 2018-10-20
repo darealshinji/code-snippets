@@ -39,18 +39,11 @@
 #include <iostream>
 #include <string>
 #include <vector>
-
 #include <pthread.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 #include <zlib.h>
-
-//#define HAVE_XSEL_INTERNAL
-#ifdef HAVE_XSEL_INTERNAL
-extern "C" int xsel_main(int argc, char *argv[]);
-static char *progname;
-#endif
 
 /**
  * Icon source:
@@ -62,15 +55,9 @@ static char *progname;
 #include "crc32_check.xpm"
 #endif
 
-#ifndef nullptr
-void *_null_ptr = NULL;
-#define NULLPTR _null_ptr
-#else
-#define NULLPTR nullptr
-#endif
-
 #define XSTR(x) #x
 #define STR(x)  XSTR(x)
+
 
 class dnd_box : public Fl_Box
 {
@@ -88,7 +75,7 @@ dnd_box *box;
 pthread_t t1;
 std::vector<std::string> list, list_bn, list_crc;
 int current_line = 0, itemcount = 0;
-char crc_clipboard[16] = {0};
+char crc_clipboard[10] = {0};
 
 std::string bg[2] = {
   "@B255", /* white */
@@ -112,20 +99,6 @@ int dnd_box::handle(int event)
       break;
   }
   return ret;
-}
-
-std::string fltk_version(void)
-{
-  /*
-  std::stringstream ss;
-  int version = Fl::api_version();
-  int major = version / 10000;
-  int minor = (version % 10000) / 100;
-  int patch = version % 100;
-  ss << major << "." << minor << "." << patch;
-  return ss.str();
-  */
-  return STR(FL_MAJOR_VERSION) "." STR(FL_MINOR_VERSION) "." STR(FL_PATCH_VERSION);
 }
 
 void split(const std::string &s, char c, std::vector<std::string> &v)
@@ -176,10 +149,11 @@ void dnd_callback(const char *items)
 long calculate_crc32(const char *file)
 {
   FILE *fp;
-  size_t items;
   Bytef buf[524288]; /* 512k */
-  long byteCount = 0L;
+  long items;
+  double fileSize, byteCount = 0;
   uInt completed = 0;
+  uLong crc;
 
   if (!(fp = fopen(file, "r"))) {
     return -1;
@@ -190,10 +164,10 @@ long calculate_crc32(const char *file)
     return -1;
   }
 
-  long fileSize = ftell(fp);
+  fileSize = ftell(fp);
   rewind(fp);
 
-  uLong crc = crc32(0, NULL, 0);
+  crc = crc32(0, NULL, 0);
 
   while (feof(fp) == 0) {
     items = fread(buf, sizeof(*buf), sizeof(buf)/sizeof(*buf), fp);
@@ -203,13 +177,13 @@ long calculate_crc32(const char *file)
       return -1;
     }
 
-    byteCount += (long)(items * sizeof(*buf));
-    uInt n = (uInt)((float)byteCount/(float)fileSize*100.0);
+    byteCount += items * sizeof(*buf);
+    uInt n = byteCount / fileSize * 100;
 
     if (n > completed && n < 100) {
       completed = n;
       int i = current_line % 2;
-      char tmp[4] = {0};
+      char tmp[4];
       snprintf(tmp, 3, "%d", completed);
       std::string entry = bg[i] + "@f@c" + tmp + "%\t" + bg[i] + "@." + list_bn[current_line];
 
@@ -220,10 +194,10 @@ long calculate_crc32(const char *file)
       Fl::awake(win);
     }
 
-    crc = crc32(crc, (const Bytef *)buf, (uInt)(items * sizeof(*buf)));
+    crc = crc32(crc, buf, items * sizeof(*buf));
   }
 
-  return (long)crc;
+  return crc;
 }
 
 void get_crc_checksum_real(void)
@@ -245,7 +219,7 @@ void get_crc_checksum_real(void)
       entry += "@C88@.ERROR";  /* red */
       list_crc.push_back("ERROR");  /* don't leave list_crc entry empty */
     } else {
-      char tmp[16] = {0};
+      char tmp[10];
       snprintf(tmp, 9, "%08lX", crc);
       list_crc.push_back(tmp);
 
@@ -276,7 +250,7 @@ extern "C" void *get_crc_checksum(void *)
     get_crc_checksum_real();
     usleep(10000); /* 10ms */
   }
-  return NULLPTR;
+  return NULL;
 }
 
 static void browser_cb(Fl_Widget *) {
@@ -291,21 +265,15 @@ static void browser_cb(Fl_Widget *) {
 
 static void add_cb(Fl_Widget *)
 {
-  const char *file = NULL;
-  const char *title = "Select a file";
+  const char *file = NULL, *title = "Select a file";
 
 #ifndef WITH_GTK
   file = fl_file_chooser(title, "*", NULL);
 #else
-  if (getenv("KDE_FULL_SESSION")) {
-    /* don't use GTK file chooser on KDE, there may be layout issues */
-    file = fl_file_chooser(title, "*", NULL);
-  } else {
-    Fl_Native_File_Chooser *gtk = new Fl_Native_File_Chooser(Fl_Native_File_Chooser::BROWSE_FILE);
-    gtk->title(title);
-    if (gtk->show() == 0) {
-      file = gtk->filename();
-    }
+  Fl_Native_File_Chooser *gtk = new Fl_Native_File_Chooser(Fl_Native_File_Chooser::BROWSE_FILE);
+  gtk->title(title);
+  if (gtk->show() == 0) {
+    file = gtk->filename();
   }
 #endif
 
@@ -352,38 +320,20 @@ static void clear_cb(Fl_Widget *)
   bt_copy->deactivate();
   bt_clear->deactivate();
   win->redraw();
-  pthread_create(&t1, 0, &get_crc_checksum, NULLPTR);
+  pthread_create(&t1, 0, &get_crc_checksum, NULL);
 }
 
-static void close_cb(Fl_Widget *)
-{
+static void close_cb(Fl_Widget *) {
   pthread_cancel(t1);
   win->hide();
-
-  if (strlen(crc_clipboard) > 0) {
-#ifdef HAVE_XSEL_INTERNAL
-    Fl::flush();
-    char *fake_argv[] = { progname, crc_clipboard, (char *)NULL };
-    xsel_main(2, fake_argv);
-#else
-    char cmd[32] = {0};
-    snprintf(cmd, 31, "printf %s | xsel -b", crc_clipboard);
-    execl("/bin/sh", "sh", "-c", cmd, (char *)NULL);
-    _exit(127);
-#endif
-  }
 }
 
-int main(int argc, char *argv[])
+int main(void)
 {
   Fl_Button *bt_close;
   Fl_Box *dummy, *info;
   Fl_Group *g;
   const int w = 640, h = 400, butw = 90;
-
-#ifdef HAVE_XSEL_INTERNAL
-  progname = argv[0];
-#endif
 
   /* add an empty first entry, so that n in list[n]
    * equals browser->value() and current_line */
@@ -392,19 +342,18 @@ int main(int argc, char *argv[])
   list_crc.push_back("");
 
 #ifdef WITH_ICON
-  Fl_Pixmap pixmap(icon_xpm);
-  Fl_RGB_Image icon(&pixmap, Fl_Color(0));
-  Fl_Window::default_icon(&icon);
+  Fl_Window::default_icon(new Fl_RGB_Image(new Fl_Pixmap(icon_xpm), Fl_Color(0)));
 #endif
   Fl::scheme("gtk+");
   Fl::visual(FL_DOUBLE|FL_INDEX);
 
-  std::string version_info = "FLTK " + fltk_version() + " - http://fltk.org\n"
+  std::string version_info =
+    "FLTK " STR(FL_MAJOR_VERSION) "." STR(FL_MINOR_VERSION) "." STR(FL_PATCH_VERSION) " - http://fltk.org\n"
     "zlib " + std::string(zlibVersion()) + " - https://zlib.net";
 
   win = new Fl_Double_Window(w, h, "CRC32 Check - drag and drop files");
   {
-    int column_widths[] = { 82, 0 };
+    const int column_widths[] = { 82, 0 };
     browser = new Fl_Multi_Browser(10, 10, w - 20, h - 60);
     browser->column_widths(column_widths);
     browser->color(FL_WHITE);
@@ -448,7 +397,7 @@ int main(int argc, char *argv[])
   Fl::lock();
   win->show();
 
-  pthread_create(&t1, 0, &get_crc_checksum, NULLPTR);
+  pthread_create(&t1, 0, &get_crc_checksum, NULL);
 
   return Fl::run();
 }
