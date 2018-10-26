@@ -58,6 +58,9 @@ public:
   dnd_box(int X, int Y, int W, int H)
    : Fl_Box(X, Y, W, H) { }
 
+  virtual ~dnd_box() { }
+
+protected:
   int handle(int event) {
     switch (event) {
       case FL_DND_ENTER:
@@ -69,6 +72,37 @@ public:
         return 1;
     }
     return Fl_Box::handle(event);
+  }
+};
+
+class MyTextDisplay : public Fl_Text_Display
+{
+private:
+  Fl_Menu_Item *_menu;
+
+public:
+  MyTextDisplay(int X, int Y, int W, int H)
+   : Fl_Text_Display(X, Y, W, H),
+     _menu(NULL)
+  { }
+
+  virtual ~MyTextDisplay() { }
+
+  void menu(Fl_Menu_Item *m) { _menu = m; }
+  //Fl_Menu_Item *menu() { return _menu; }
+
+protected:
+  int handle(int event) {
+    if (event == FL_PUSH) {
+      if (Fl::event_button() == FL_RIGHT_MOUSE) {
+        const Fl_Menu_Item *m = _menu->popup(Fl::event_x(), Fl::event_y());
+        if (m) {
+          m->do_callback(NULL);
+        }
+        return 1;
+      }
+    }
+    return Fl_Text_Display::handle(event);
   }
 };
 
@@ -131,7 +165,7 @@ static const unsigned char png_buff[] = {
 
 static Fl_Double_Window *win, *about_win;
 static Fl_Text_Buffer *buff;
-static Fl_Text_Display *text;
+static MyTextDisplay *text;
 static Fl_Help_View *html;
 static Fl_Tree *tree;
 static Fl_Preferences *prefs = NULL;
@@ -313,6 +347,23 @@ static void about_cb(Fl_Widget *, void *)
   about_win->take_focus();
 }
 
+static void copy_text_selection_cb(Fl_Widget *, void *)
+{
+  if (buff->selected()) {
+    int start, end;
+    buff->selection_position(&start, &end);
+    char *text = buff->text_range(start, end);
+    Fl::copy(text, end - start, 1);
+    free(text);
+  } else {
+    Fl::copy("", 0, 1);
+  }
+}
+
+static void dismiss_cb(Fl_Widget *, void *) {
+  /* do nothing; menu window will just close */
+}
+
 static void close_cb(Fl_Widget *, void *)
 {
   about_win->hide();
@@ -352,6 +403,12 @@ int main(int argc, char *argv[])
     {0}
   };
 
+  Fl_Menu_Item text_menu[] = {
+    { " Copy selection  ", 0, copy_text_selection_cb, NULL, FL_MENU_DIVIDER },
+    { " Dismiss  ", 0, dismiss_cb },
+    {0}
+  };
+
   flags_text = &menu[5].flags;
   flags_html = &menu[6].flags;
   flags_tree = &menu[7].flags;
@@ -385,11 +442,12 @@ int main(int argc, char *argv[])
 
       g_inside = new Fl_Group(10, 30, 780, 560);
       {
-        text = new Fl_Text_Display(10, 30, 780, 560);
+        text = new MyTextDisplay(10, 30, 780, 560);
         buff = new Fl_Text_Buffer();
         text->buffer(buff);
         text->textfont(FL_SCREEN);  // FL_COURIER
         text->wrap_mode(Fl_Text_Display::WRAP_AT_BOUNDS, 1);
+        text->menu(text_menu);
         //text->hide();
 
         html = new Fl_Help_View(10, 30, 780, 560);
