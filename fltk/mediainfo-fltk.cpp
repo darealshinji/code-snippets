@@ -50,15 +50,18 @@
 #include <strings.h>
 #include <string.h>
 
-static void dnd_dropped(const char *item);
+#define FL_MENU_DEFAULT  0
+#define PREFS_VENDOR     "https://github.com/darealshinji"
+#define PREFS_APP        "mediainfo-fltk"
 
-class dnd_box : public Fl_Box
+
+class MyDndBox : public Fl_Box
 {
 public:
-  dnd_box(int X, int Y, int W, int H)
+  MyDndBox(int X, int Y, int W, int H)
    : Fl_Box(X, Y, W, H) { }
 
-  virtual ~dnd_box() { }
+  virtual ~MyDndBox() { }
 
 protected:
   int handle(int event) {
@@ -68,7 +71,7 @@ protected:
       case FL_DND_RELEASE:
         return 1;
       case FL_PASTE:
-        dnd_dropped(Fl::event_text());
+        do_callback();
         return 1;
     }
     return Fl_Box::handle(event);
@@ -89,20 +92,59 @@ public:
   virtual ~MyTextDisplay() { }
 
   void menu(Fl_Menu_Item *m) { _menu = m; }
-  //Fl_Menu_Item *menu() { return _menu; }
 
 protected:
   int handle(int event) {
-    if (event == FL_PUSH) {
-      if (Fl::event_button() == FL_RIGHT_MOUSE) {
-        const Fl_Menu_Item *m = _menu->popup(Fl::event_x(), Fl::event_y());
-        if (m) {
-          m->do_callback(NULL);
-        }
-        return 1;
+    if (event == FL_PUSH && Fl::event_button() == FL_RIGHT_MOUSE) {
+      _menu[0].flags = (buffer() && buffer()->selected()) ? FL_MENU_DIVIDER : FL_MENU_INACTIVE|FL_MENU_DIVIDER;
+      const Fl_Menu_Item *m = _menu->popup(Fl::event_x(), Fl::event_y());
+      if (m) {
+        m->do_callback(NULL);
       }
+      return 1;
     }
     return Fl_Text_Display::handle(event);
+  }
+};
+
+class MyTree : public Fl_Tree
+{
+private:
+  Fl_Menu_Item *_menu;
+  char *_selection;
+
+public:
+  MyTree(int X, int Y, int W, int H)
+   : Fl_Tree(X, Y, W, H),
+     _menu(NULL),
+     _selection(NULL)
+  { }
+
+  ~MyTree() { clear_selection(); }
+
+  void menu(Fl_Menu_Item *m) { _menu = m; }
+
+  void selection(const char *s) { clear_selection(); _selection = strdup(s); }
+  char *selection() const { return _selection; }
+
+  void clear_selection() {
+    if (_selection) {
+      free(_selection);
+    }
+    _selection = NULL;
+  }
+
+protected:
+  int handle(int event) {
+    if (event == FL_PUSH && Fl::event_button() == FL_RIGHT_MOUSE) {
+      _menu[0].flags = selection() ? FL_MENU_DIVIDER : FL_MENU_INACTIVE|FL_MENU_DIVIDER;
+      const Fl_Menu_Item *m = _menu->popup(Fl::event_x(), Fl::event_y());
+      if (m) {
+        m->do_callback(NULL);
+      }
+      return 1;
+    }
+    return Fl_Tree::handle(event);
   }
 };
 
@@ -160,50 +202,85 @@ static const unsigned char png_buff[] = {
   0x49,0x45,0x4e,0x44,0xae,0x42,0x60,0x82
 };
 
-#define VENDOR  "https://github.com/darealshinji"
-#define APP     "mediainfo-fltk"
-
 static Fl_Double_Window *win, *about_win;
 static Fl_Text_Buffer *buff;
 static MyTextDisplay *text;
 static Fl_Help_View *html;
-static Fl_Tree *tree;
-static Fl_Preferences *prefs = NULL;
-static MediaInfoLib::MediaInfo mi;
-
+static MyTree *tree;
 static const char *view_set = "text";
-static const int ABOUT_W = 260, ABOUT_H = 130;
+static int *flags_expand, *flags_collapse;
 
+
+static void replace_string(const std::string &from, const std::string &to, std::string &s)
+{
+  //if (!from.empty()) {
+    for (size_t pos = 0; (pos = s.find(from, pos)) != std::string::npos; pos += to.size()) {
+      s.replace(pos, from.size(), to);
+    }
+  //}
+}
+
+static void do_nothing_cb(Fl_Widget *, void *) {
+}
+
+static void tree_cb(Fl_Widget *, void *)
+{
+  Fl_Tree_Item *item, *par;
+  const char *l1 = NULL, *l2 = NULL, *l3 = NULL;
+
+  if (tree->callback_reason() == FL_TREE_REASON_SELECTED) {
+    if ((item = tree->last_selected_item()) == NULL) {
+      return;
+    }
+
+    if (item->depth() == 3) {
+      par = item->parent();
+      l1 = par->parent()->label();
+      l2 = item->parent()->label();
+      l3 = item->label();
+    } else if (item->depth() == 2 && item->has_children()) {
+      l1 = item->parent()->label();
+      l2 = item->label();
+      l3 = item->child(0)->label();
+    }
+
+    if (l1 && l2 && l3) {
+      std::string s = "[" + std::string(l1) + "] " + std::string(l2) + ": " + std::string(l3);
+      replace_string("\xE2\x88\x95", "/", s);
+      tree->selection(s.c_str());
+    }
+  } else {
+    tree->clear_selection();
+  }
+}
 
 static void tree_expand_all_cb(Fl_Widget *, void *)
 {
   Fl_Tree_Item *item = tree->first();
+  tree->callback(do_nothing_cb);
 
   while (item != tree->last()) {
     item = tree->next_item(item);
     tree->open(item);
   }
+  tree->callback(tree_cb);
 }
 
 static void tree_collapse_all_cb(Fl_Widget *, void *)
 {
   Fl_Tree_Item *item = tree->first();
+  tree->callback(do_nothing_cb);
 
   while (item != tree->last()) {
     item = tree->next_item(item);
     tree->close(item);
   }
-}
-
-/* replace regular slash with division slash */
-static void division_slash(std::string &str) {
-  for (size_t pos = 0; (pos = str.find('/', pos)) != std::string::npos; pos += 3) {
-    str.replace(pos, 1, "\xE2\x88\x95");
-  }
+  tree->callback(tree_cb);
 }
 
 static void load_file(const char *file)
 {
+  MediaInfoLib::MediaInfo mi;
   ZenLib::Ztring ztr;
   std::string str, root;
   std::vector<std::string> vec;
@@ -264,11 +341,11 @@ static void load_file(const char *file)
     }
 
     sub = elem.substr(0, elem.find_last_not_of(' ', 40) + 1);
-    division_slash(sub);
+    replace_string("/", "\xE2\x88\x95", sub);
     str = root + "/" + sub + "/";
 
     sub = elem.substr(43);
-    division_slash(sub);
+    replace_string("/", "\xE2\x88\x95", sub);
     str += sub;
 
     tree->add(str.c_str());
@@ -278,9 +355,10 @@ static void load_file(const char *file)
   tree_collapse_all_cb(NULL, NULL);
 }
 
-static void dnd_dropped(const char *item)
+static void dnd_dropped_cb(Fl_Widget *, void *)
 {
   char *copy, *p;
+  const char *item = Fl::event_text();
 
   if (strncmp(item, "file:///", 8) != 0) {
     return;
@@ -301,30 +379,36 @@ static void dnd_dropped(const char *item)
 
 static void view_text_cb(Fl_Widget *, void *)
 {
-  text->show();
-  text->scroll(0, 0);
   html->hide();
   tree->hide();
   view_set = "text";
+  *flags_expand = *flags_collapse = FL_MENU_INACTIVE;
+
+  text->show();
+  text->scroll(0, 0);
 }
 
 static void view_html_cb(Fl_Widget *, void *)
 {
   text->hide();
-  html->show();
-  html->topline(0);
   tree->hide();
   view_set = "html";
+  *flags_expand = *flags_collapse = FL_MENU_INACTIVE;
+
+  html->show();
+  html->topline(0);
 }
 
 static void view_tree_cb(Fl_Widget *, void *)
 {
   text->hide();
   html->hide();
+  view_set = "tree";
+  *flags_expand = *flags_collapse = 0;
+
   tree->show();
   tree->hposition(0);
   tree->vposition(0);
-  view_set = "tree";
 }
 
 static void open_file_cb(Fl_Widget *, void *)
@@ -339,10 +423,10 @@ static void open_file_cb(Fl_Widget *, void *)
 
 static void about_cb(Fl_Widget *, void *)
 {
-  int x = win->x() + win->w()/2 - ABOUT_W/2;
-  int y = win->y() + win->h()/2 - ABOUT_H/2;
+  int x = win->x() + win->w()/2 - about_win->w()/2;
+  int y = win->y() + win->h()/2 - about_win->h()/2;
 
-  about_win->resize(x, y, ABOUT_W, ABOUT_H);
+  about_win->resize(x, y, about_win->w(), about_win->h());
   about_win->show();
   about_win->take_focus();
 }
@@ -360,42 +444,56 @@ static void copy_text_selection_cb(Fl_Widget *, void *)
   }
 }
 
-static void dismiss_cb(Fl_Widget *, void *) {
-  /* do nothing; menu window will just close */
+static void copy_tree_selection_cb(Fl_Widget *, void *)
+{
+  char * const sel = tree->selection();
+
+  if (sel) {
+    Fl::copy(sel, strlen(sel), 1);
+  } else {
+    Fl::copy("", 0, 1);
+  }
 }
 
-static void close_cb(Fl_Widget *, void *)
+static void close_cb(Fl_Widget *, void *v)
 {
   about_win->hide();
   win->hide();
 
-  if (prefs) {
-    prefs->set("view", view_set);
-    prefs->flush();
+  if (v) {
+    Fl_Preferences *p = reinterpret_cast<Fl_Preferences *>(v);
+    p->set("view", view_set);
+    p->flush();
   }
 }
 
 int main(int argc, char *argv[])
 {
   Fl_Group *g, *g_inside, *g_top;
-  Fl_Menu_Bar *menu_bar;
-  ZenLib::Ztring ver, url;
-  std::string str;
+  Fl_Preferences *prefs = NULL;
   char *home;
   char view_get[8] = {0};
   int *flags_text, *flags_html, *flags_tree;
 
+  if ((home = getenv("HOME")) != NULL) {
+    std::string s = std::string(home) + "/.config";
+    prefs = new Fl_Preferences(s.c_str(), PREFS_VENDOR, PREFS_APP);
+    if (!prefs->get("view", view_get, "text", sizeof(view_get))) {
+      memset(view_get, '\0', sizeof(view_get));
+    }
+  }
+
   Fl_Menu_Item menu[] = {
     { "File", 0,0,0, FL_SUBMENU },
       { " Open file  ", 0, open_file_cb, 0, FL_MENU_DIVIDER },
-      { " Close window  ", 0, close_cb },
+      { " Close window  ", 0, close_cb, prefs },
       {0},
     { "View", 0,0,0, FL_SUBMENU },
       { " Text  ", 0, view_text_cb, 0, FL_MENU_RADIO },
       { " HTML  ", 0, view_html_cb, 0, FL_MENU_RADIO },
       { " Tree  ", 0, view_tree_cb, 0, FL_MENU_RADIO|FL_MENU_DIVIDER },
-      { " Expand all (tree view)  ", 0, tree_expand_all_cb },
-      { " Collapse all (tree view)  ", 0, tree_collapse_all_cb },
+      { " Expand all  ", 0, tree_expand_all_cb, 0, FL_MENU_INACTIVE },
+      { " Collapse all  ", 0, tree_collapse_all_cb, 0, FL_MENU_INACTIVE },
       {0},
     { "Help", 0,0,0, FL_SUBMENU },
       { " About  ", 0, about_cb },
@@ -405,21 +503,21 @@ int main(int argc, char *argv[])
 
   Fl_Menu_Item text_menu[] = {
     { " Copy selection  ", 0, copy_text_selection_cb, NULL, FL_MENU_DIVIDER },
-    { " Dismiss  ", 0, dismiss_cb },
+    { " Dismiss  ", 0, do_nothing_cb },
+    {0}
+  };
+
+  Fl_Menu_Item tree_menu[] = {
+    { " Copy selection  ", 0, copy_tree_selection_cb, NULL, FL_MENU_DIVIDER },
+    { " Dismiss  ", 0, do_nothing_cb },
     {0}
   };
 
   flags_text = &menu[5].flags;
   flags_html = &menu[6].flags;
   flags_tree = &menu[7].flags;
-
-  if ((home = getenv("HOME")) != NULL) {
-    str = std::string(home) + "/.config";
-    prefs = new Fl_Preferences(str.c_str(), VENDOR, APP);
-    if (!prefs->get("view", view_get, "text", sizeof(view_get))) {
-      view_get[0] = '\0';
-    }
-  }
+  flags_expand = &menu[8].flags;
+  flags_collapse = &menu[9].flags;
 
   /* http://fltk.org/str.php?L3465+P0+S-2+C0+I0+E0+V%25+QFL_SCREEN */
   Fl::set_font(FL_SCREEN, " mono");
@@ -427,15 +525,15 @@ int main(int argc, char *argv[])
   Fl_Window::default_icon(new Fl_PNG_Image(NULL, png_buff, sizeof(png_buff)));
 
   win = new Fl_Double_Window(800, 600, "MediaInfo");
-  win->callback(close_cb, NULL);
+  win->callback(close_cb, prefs);
   {
     g = new Fl_Group(0, 0, 800, 600);
     {
       g_top = new Fl_Group(10, 0, 780, 30);
       {
-        menu_bar = new Fl_Menu_Bar(10, 0, 200, 30);
-        menu_bar->box(FL_NO_BOX);
-        menu_bar->menu(menu);
+        Fl_Menu_Bar *o = new Fl_Menu_Bar(10, 0, 200, 30);
+        o->box(FL_NO_BOX);
+        o->menu(menu);
       }
       g_top->end();
       g_top->resizable(NULL);
@@ -448,18 +546,20 @@ int main(int argc, char *argv[])
         text->textfont(FL_SCREEN);  // FL_COURIER
         text->wrap_mode(Fl_Text_Display::WRAP_AT_BOUNDS, 1);
         text->menu(text_menu);
-        //text->hide();
 
         html = new Fl_Help_View(10, 30, 780, 560);
         html->hide();
 
-        tree = new Fl_Tree(10, 30, 780, 560);
+        tree = new MyTree(10, 30, 780, 560);
         tree->showroot(0);
+        tree->menu(tree_menu);
+        tree->callback(tree_cb);
         tree->hide();
       }
       g_inside->end();
 
-      new dnd_box(10, 30, 780, 560);
+      { MyDndBox *o = new MyDndBox(10, 30, 780, 560);
+       o->callback(dnd_dropped_cb); }
     }
     g->end();
     g->resizable(g_inside);
@@ -469,25 +569,19 @@ int main(int argc, char *argv[])
   win->position((Fl::w() - 800) / 2, (Fl::h() - 600) / 2); /* center */
   win->show();
 
-  about_win = new Fl_Double_Window(ABOUT_W, ABOUT_H, "About");
+  about_win = new Fl_Double_Window(260, 130, "About");
   {
-    ver = mi.Option(__T("Info_Version"));
-    url = mi.Option(__T("Info_Url"));
-    str = "<body bgcolor=silver><center><p></p><p>Using ";
-    str += ver.To_Local().c_str();
-    str += "</p><p></p><p><a href=\"";
-    str += url.To_Local().c_str();
-    str += "\">";
-    str += url.To_Local().c_str();
-    str += "</a></p></center></body>";
+    MediaInfoLib::MediaInfo mi;
+    ZenLib::Ztring url = mi.Option(__T("Info_Url"));
 
-    Fl_Help_View *o = new Fl_Help_View(0, 0, ABOUT_W, ABOUT_H);
-    o->box(FL_FLAT_BOX);
-    o->value(str.c_str());
+    ZenLib::Ztring ztr = __T("<body bgcolor=silver><center><p></p><p>Using ")
+      + mi.Option(__T("Info_Version"))
+      + __T("</p><p></p><p><a href=\"") + url + __T("\">")
+      + url + __T("</a></p></center></body>");
 
-    ver.clear();
-    url.clear();
-    str.clear();
+    { Fl_Help_View *o = new Fl_Help_View(0, 0, 260, 130);
+     o->box(FL_FLAT_BOX);
+     o->value(ztr.To_Local().c_str()); }
   }
   about_win->end();
 
@@ -496,6 +590,7 @@ int main(int argc, char *argv[])
     view_html_cb(NULL, NULL);
   } else if (strcasecmp(view_get, "tree") == 0) {
     *flags_tree = FL_MENU_RADIO|FL_MENU_VALUE|FL_MENU_DIVIDER;
+    *flags_expand = *flags_collapse = FL_MENU_DEFAULT;
     view_tree_cb(NULL, NULL);
   } else {
     *flags_text = FL_MENU_RADIO|FL_MENU_VALUE;
