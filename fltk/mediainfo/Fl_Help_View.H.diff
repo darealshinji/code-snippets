@@ -1,0 +1,29 @@
+--- a/FL/Fl_Help_View.H
++++ b/FL/Fl_Help_View.H
+@@ -240,12 +240,16 @@ class FL_EXPORT Fl_Help_View : public Fl_Group {	// Help viewer widget
+   static int    selection_push_last;
+   static int    selection_drag_first;
+   static int    selection_drag_last;
++protected:
+   static int    selected;
++private:
+   static int    draw_mode;
+   static int    mouse_x;
+   static int    mouse_y;
+   static int    current_pos;
++protected:
+   static Fl_Help_View *current_view;
++private:
+   static Fl_Color hv_selection_color;
+   static Fl_Color hv_selection_text_color;
+ 
+@@ -286,7 +290,9 @@ private:
+   void          hv_draw(const char *t, int x, int y, int entity_extra_length = 0);
+   char          begin_selection();
+   char          extend_selection();
++public:
+   void          end_selection(int c=0);
++private:
+   void          clear_global_selection();
+   Fl_Help_Link  *find_link(int, int);
+   void          follow_link(Fl_Help_Link*);
