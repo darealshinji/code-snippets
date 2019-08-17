@@ -19,18 +19,21 @@ void print_help(char *argv0)
         "", argv0, argv0);
 }
 
-/* assuming hex_str to begin with \x or 0x */
-unsigned char hextouchar(const char *hex_str)
+/* assuming string to begin with \x or 0x */
+unsigned char hextouchar(const char *in)
 {
-    char *p;
-    char s[5];
-    unsigned long l;
+    char *p = NULL;
+    char s[] = { '0','x','0',0,0 };
+    size_t len = strlen(in);
 
-    memcpy(s, hex_str, 4);
-    s[4] = '\0';
-    l = strtoul(s, &p, 16);
+    if (len > 2) {
+        s[2] = in[2];
+    }
+    if (len > 3) {
+        s[3] = in[3];
+    }
 
-    return (unsigned char)l;
+    return (unsigned char)strtoul(s, &p, 16);
 }
 
 unsigned long getoffset(const char *offset_str)
@@ -40,10 +43,9 @@ unsigned long getoffset(const char *offset_str)
     char *p = NULL;
     char *buf = strdup(offset_str);
 
-    if (strncasecmp(buf, "0x", 2) == 0) {
-        base = 16;
-    } else if (strncasecmp(buf, "\\x", 2) == 0) {
+    if (strncasecmp(buf, "0x", 2) == 0 || strncasecmp(buf, "\\x", 2) == 0) {
         buf[0] = '0';
+        buf[1] = 'x';
         base = 16;
     }
 
@@ -158,7 +160,7 @@ int main(int argc, char *argv[])
     const char *arg_char = NULL;
     const char *arg_file = NULL;
     const char *arg_offset = NULL;
-    const char *format = "%X%c";
+    const char *format = "%02X%c";
     char newline = '\n';
     FILE *fp = NULL;
 
