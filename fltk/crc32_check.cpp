@@ -1,7 +1,7 @@
 /*
  * The MIT License (MIT)
  *
- * Copyright (c) 2017-2018, djcj <djcj@gmx.de>
+ * Copyright (c) 2017-2019, djcj <djcj@gmx.de>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -204,15 +204,17 @@ void get_crc_checksum_real(void)
 {
   if (current_line < itemcount) {
     current_line++;
+    int i = current_line % 2;
+    std::string entry = bg[i] + "@f@c0%\t" + bg[i] + "@." + list_bn[current_line];
 
     Fl::lock();
     browser->bottomline(current_line);
+    browser->remove(current_line);
+    browser->insert(current_line, entry.c_str());
     Fl::unlock();
     Fl::awake(win);
 
-    int i = current_line % 2;
-    std::string entry = bg[i] + "@f@c";
-
+    entry = bg[i] + "@f@c";
     long crc = calculate_crc32(list[current_line].c_str());
 
     if (crc == -1) {
