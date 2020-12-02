@@ -7,12 +7,14 @@
  */
 
 #include <stdio.h>
-
-#define MAX_LINE_LENGTH 80
+#include <string.h>
 
 
 int main(void)
 {
+  const char *ind = "  ";  /* indentation */
+  const int max = 80;      /* maximum line length, 0 means line break on '\n' */
+
   char c = getchar();
   char s[9] = {0};
   int i, n = 0;
@@ -21,8 +23,8 @@ int main(void)
     return 1;
   }
 
-  printf("  \"");
-  i = 3;
+  printf("%s\"", ind);
+  i = strlen(ind) + 1;
 
   while (c != EOF && c != 0) {
     if (c >= ' ' && c <= '~') {
@@ -51,9 +53,11 @@ int main(void)
       n = 8;
     }
 
-    if ((i + n) >= MAX_LINE_LENGTH) {
-      printf("\"\n  \"%s", s);
-      i = 3 + n;
+    if (max < 1 && c == '\n') {
+      printf("\\n\"\n%s\"", ind);
+    } else if (max > 1 && (i + n) >= max) {
+      printf("\"\n%s\"%s", ind, s);
+      i = n + 1 + strlen(ind);
     } else {
       printf("%s", s);
       i += n;
@@ -65,4 +69,3 @@ int main(void)
 
   return 0;
 }
-
