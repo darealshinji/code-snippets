@@ -50,28 +50,17 @@ size_t strlastcasecmp(const char *s1, const char *s2)
   return n;
 }
 
-/* Returns 1 if string s ends on string suf, otherwise 0 is returned. */
+/* returns 0 if s ends on suf */
 int str_ends_on(const char *s, const char *suf)
 {
   size_t len1 = strlen(s);
   size_t len2 = strlen(suf);
-  size_t len_suf = len2;
-  size_t n = 0;
 
   if (len1 == 0 || len2 == 0 || len1 < len2) {
-    return 0;
+    return -1;
   }
 
-  --len1; --len2;
-
-  while (len1 != 0 && len2 != 0) {
-    if (s[len1] != suf[len2]) {
-      break;
-    }
-    ++n; --len1; --len2;
-  }
-
-  return (++n == len_suf) ? 1 : 0;
+  return strcmp(s + (len1 - len2), suf);
 }
 
 /* like str_ends_on() but ignoring case */
@@ -79,23 +68,12 @@ int strcase_ends_on(const char *s, const char *suf)
 {
   size_t len1 = strlen(s);
   size_t len2 = strlen(suf);
-  size_t len_suf = len2;
-  size_t n = 0;
 
   if (len1 == 0 || len2 == 0 || len1 < len2) {
-    return 0;
+    return -1;
   }
 
-  --len1; --len2;
-
-  while (len1 != 0 && len2 != 0) {
-    if (tolower(s[len1]) != tolower(suf[len2])) {
-      break;
-    }
-    ++n; --len1; --len2;
-  }
-
-  return (++n == len_suf) ? 1 : 0;
+  return strcasecmp(s + (len1 - len2), suf);
 }
 
 int main(void)
@@ -124,7 +102,7 @@ int main(void)
   printf("last common chars: %ld\n\n", n);
 
   /* Test 3 */
-  if (str_ends_on(str4, suf1)) {
+  if (str_ends_on(str4, suf1) == 0) {
     yesno = "ends";
   }
   printf("Test 3\n");
@@ -133,7 +111,7 @@ int main(void)
   printf("`%s' %s on `%s'\n\n", str4, yesno, suf1);
 
   /* Test 4 */
-  if (strcase_ends_on(str4, suf2)) {
+  if (strcase_ends_on(str4, suf2) == 0) {
     yesno = "ends";
   } else {
     yesno = "does NOT end";
