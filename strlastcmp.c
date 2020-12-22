@@ -51,19 +51,51 @@ size_t strlastcasecmp(const char *s1, const char *s2)
 }
 
 /* Returns 1 if string s ends on string suf, otherwise 0 is returned. */
-int str_ends_on(const char *s, const char *suf) {
-  if (strlastcmp(s, suf) == strlen(suf)) {
-    return 1;
+int str_ends_on(const char *s, const char *suf)
+{
+  size_t len1 = strlen(s);
+  size_t len2 = strlen(suf);
+  size_t len_suf = len2;
+  size_t n = 0;
+
+  if (len1 == 0 || len2 == 0 || len1 < len2) {
+    return 0;
   }
-  return 0;
+
+  --len1; --len2;
+
+  while (len1 != 0 && len2 != 0) {
+    if (s[len1] != suf[len2]) {
+      break;
+    }
+    ++n; --len1; --len2;
+  }
+
+  return (++n == len_suf) ? 1 : 0;
 }
 
 /* like str_ends_on() but ignoring case */
-int strcase_ends_on(const char *s, const char *suf) {
-  if (strlastcasecmp(s, suf) == strlen(suf)) {
-    return 1;
+int strcase_ends_on(const char *s, const char *suf)
+{
+  size_t len1 = strlen(s);
+  size_t len2 = strlen(suf);
+  size_t len_suf = len2;
+  size_t n = 0;
+
+  if (len1 == 0 || len2 == 0 || len1 < len2) {
+    return 0;
   }
-  return 0;
+
+  --len1; --len2;
+
+  while (len1 != 0 && len2 != 0) {
+    if (tolower(s[len1]) != tolower(suf[len2])) {
+      break;
+    }
+    ++n; --len1; --len2;
+  }
+
+  return (++n == len_suf) ? 1 : 0;
 }
 
 int main(void)
