@@ -1,5 +1,5 @@
 /**
- * simple implementation of Debian's /bin/which
+ * simple implementation of Debian's "which"
  * command in C (see Debian's "debianutils" package)
  */
 #include <stdio.h>
@@ -9,38 +9,29 @@
 
 char *which(const char *command)
 {
-  size_t len, i;
-  char *env, *env_copy, *str;
+  size_t len;
+  char *env, *str, *token;
 
   if (!command || (len = strlen(command)) == 0 || (env = getenv("PATH")) == NULL) {
     return NULL;
   }
 
-  env_copy = strdup(env);
+  str = env = strdup(env);
 
-  /**
-   * though not really needed, stop after 999 iterations
-   * to prevent any potential endless loop
-   */
-  for (i = 0, str = env_copy; i < 999; ++i, str = NULL) {
-    char *token = strtok(str, ":");
-
-    if (!token) {
-      free(env_copy);
-      return NULL;
-    }
-
+  while ((token = strtok(str, ":")) != NULL) {
     char *file = malloc(strlen(token) + len + 2);
     sprintf(file, "%s/%s", token, command);
 
     if (access(file, R_OK|X_OK) == 0) {
-      free(env_copy);
+      free(env);
       return file;
     }
-    free(file);
-  }
-  free(env_copy);
 
+    free(file);
+    str = NULL;
+  }
+
+  free(env);
   return NULL;
 }
 
@@ -54,8 +45,7 @@ int main(int argc, char *argv[])
   }
 
   for (int i = 1; i < argc; i++) {
-    path = which(argv[i]);
-    if (path) {
+    if ((path = which(argv[i])) != NULL) {
       rv = 0;
       printf("%s\n", path);
       free(path);
