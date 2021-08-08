@@ -14,12 +14,25 @@
 #define LL_DEC(NAME,SUFFIX)            NAME##_t_ NAME##SUFFIX = nullptr;
 #define LL_CAST(NAME,SUFFIX,POINTER)   NAME##SUFFIX = reinterpret_cast<NAME##_t_>(POINTER);
 
+// do typedef, function declaration and pointer casting at once
 #define LL_FUNC(TYPE, NAME,SUFFIX, PARAM, POINTER) \
   typedef TYPE (*NAME##_LL_t) PARAM; \
   NAME##_LL_t NAME##SUFFIX = reinterpret_cast<NAME##_LL_t>(POINTER);
 
+#define LL_STRINGIFY(x) #x
 
-// helper class to ease up dynamic library loading on Windows and Linux
+// same as LL_FUNC() makro but it also creates strings
+// for TYPE, NAME, SUFFIX and PARAM
+#define LL_FUNC2(TYPE, NAME,SUFFIX, PARAM, POINTER) \
+  LL_FUNC(TYPE, NAME,SUFFIX, PARAM, POINTER) \
+  const char *NAME##SUFFIX##_return_type = LL_STRINGIFY(TYPE); \
+  const char *NAME##SUFFIX##_function_name = LL_STRINGIFY(NAME); \
+  const char *NAME##SUFFIX##_suffix = LL_STRINGIFY(SUFFIX); \
+  const char *NAME##SUFFIX##_parameters = LL_STRINGIFY(PARAM); \
+  const char *NAME##SUFFIX##_str = LL_STRINGIFY(TYPE) " " LL_STRINGIFY(NAME) LL_STRINGIFY(SUFFIX) LL_STRINGIFY(PARAM);
+
+
+// helper class to ease up dynamic library loading on Windows and POSIX systems
 class Load_library
 {
 private:
@@ -208,6 +221,7 @@ public:
 #endif
 
 };
+
 
 
 // template class to automate the cast from a function address
