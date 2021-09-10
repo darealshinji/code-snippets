@@ -228,6 +228,16 @@ public:
 // pointer to a usable function, as an alternative to a macro;
 // pro: asserts if casted from null pointer
 // con: function must be called with exec() method
+//
+// Example for function "void simon_says(const char *arg)" in
+// library "simon.so" (ignoring error checks):
+//
+//   Load_library ll("./simon.so");
+//   ll.load_symbol("simon_says");
+//   Function_from_pointer<void, const char *> simon_says(ll.last_symbol());
+//   simon_says.exec("hello!");
+//   ll.free_library();
+//
 template <typename T=void, typename... TParameters>
 class Function_from_pointer
 {
