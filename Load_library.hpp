@@ -39,16 +39,17 @@ private:
 
 #ifdef _WIN32
   enum { DEFAULT_FLAGS = 0 };
-  HMODULE handle_;
+  HMODULE handle_ = NULL;
   std::wstring wpath_;
 #else
   typedef void * FARPROC;
   enum { DEFAULT_FLAGS = RTLD_LAZY };
-  void *handle_;
+  void *handle_ = NULL;
 #endif
 
-  FARPROC last_symbol_;
+  FARPROC last_symbol_ = NULL;
   std::string path_;
+  bool verbose_ = false;
 
   typedef struct {
     std::string name;
@@ -57,15 +58,26 @@ private:
 
   std::vector<sym_t> symbols_;
 
+  void print_error(const char *msg, const char *info)
+  {
+    if (verbose_) fprintf(stderr, "error: %s%s\n", msg, info);
+  }
+
+#ifdef _WIN32
+  void print_error(const wchar_t *msg, const wchar_t *info)
+  {
+    if (verbose_) fwprintf(stderr, L"error: %s%s\n", msg, info);
+  }
+#endif
+
 public:
 
   // c'tor does nothing
-  Load_library() : handle_(NULL), last_symbol_(NULL)
+  Load_library()
   {}
 
   // c'tor loads library
   Load_library(const char *filename, int flags=DEFAULT_FLAGS)
-  : handle_(NULL), last_symbol_(NULL)
   {
     load(filename, flags);
   }
@@ -73,7 +85,6 @@ public:
 #ifdef _WIN32
   // c'tor loads library (wide character version)
   Load_library(const wchar_t *wfilename, int flags=DEFAULT_FLAGS)
-  : handle_(NULL), last_symbol_(NULL)
   {
     load(wfilename, flags);
   }
@@ -93,6 +104,7 @@ public:
 #else
     handle_ = ::dlopen(filename, flags);
 #endif
+    if (!handle_) print_error("failed to load library: ", filename);
     return (handle_ != NULL);
   }
 
@@ -102,6 +114,7 @@ public:
   {
     if (!free_library()) return false;
     handle_ = ::LoadLibraryExW(wfilename, NULL, flags);
+    if (!handle_) print_error(L"failed to load library: ", wfilename);
     return (handle_ != NULL);
   }
 #endif
@@ -109,7 +122,10 @@ public:
   // load symbol
   bool load_symbol(const char *symbol)
   {
-    if (!symbol || *symbol == 0) return false;
+    if (!symbol || *symbol == 0) {
+      print_error("value `symbol' is empty", "");
+      return false;
+    }
 
     FARPROC p;
 #ifdef _WIN32
@@ -118,7 +134,11 @@ public:
     p = ::dlsym(handle_, symbol);
 #endif
 
-    if (!p) return false;
+    if (!p) {
+      print_error("failed to load address of symbol: ", symbol);
+      return false;
+    }
+
     last_symbol_ = p;
 
     for (auto e : symbols_) {
@@ -138,6 +158,12 @@ public:
   {
     if (!handle_) return true;
 
+    char *copy = NULL;
+
+    if (verbose_ && path()) {
+      copy = strdup(path());
+    }
+
 #ifdef _WIN32
     // MSDN: If the function succeeds, the return value is nonzero.
     // If the function fails, the return value is zero.
@@ -147,25 +173,55 @@ public:
     if (::dlclose(handle_) != 0)
 #endif
     {
+      if (copy) {
+        print_error("failed to free library: ", copy);
+        free(copy);
+      }
       return false;
     }
 
     symbols_.clear();
     last_symbol_ = NULL;
     handle_ = NULL;
+    if (copy) free(copy);
 
     return true;
   }
 
   // return symbol address by name
-  FARPROC get_symbol(const char *symbol) const
+  FARPROC get_symbol(const char *symbol)
   {
-    if (!symbol || *symbol == 0) return NULL;
+    if (!symbol || *symbol == 0) {
+      print_error("value `symbol' is empty", "");
+      return NULL;
+    }
 
     for (auto e : symbols_) {
       if (e.name.compare(symbol) == 0) return e.address;
     }
+
+    print_error("address for symbol not found: ", symbol);
+
     return NULL;
+  }
+
+  bool get_symbol(const char *symbol, FARPROC *proc)
+  {
+    if (!symbol || *symbol == 0) {
+      print_error("value `symbol' is empty", "");
+      return NULL;
+    }
+
+    for (auto e : symbols_) {
+      if (e.name.compare(symbol) == 0) {
+        *proc = e.address;
+        return true;
+      }
+    }
+
+    print_error("address for symbol not found: ", symbol);
+
+    return false;
   }
 
   // return pointer to the last successfully loaded symbol;
@@ -174,6 +230,10 @@ public:
 
   // return true if library was successfully loaded
   bool is_loaded() const {return (handle_ != NULL);}
+
+  // get/set verbosity (print error messages)
+  bool verbose() const {return verbose_;}
+  void verbose(bool b) {verbose_ = b;}
 
   // return the library's file path
   const char *path()
@@ -186,6 +246,7 @@ public:
     if (::GetModuleFileNameA(handle_, reinterpret_cast<char *>(&buf), sizeof(buf)-1) == 0 ||
         ::GetLastError() != ERROR_SUCCESS)
     {
+      print_error("call to GetModuleFileNameA() has failed", "");
       return NULL;
     }
     path_ = buf;
@@ -193,6 +254,7 @@ public:
     const struct link_map *lm = 0;
 
     if (::dlinfo(handle_, RTLD_DI_LINKMAP, &lm) != 0 || lm->l_name == NULL || *lm->l_name == 0) {
+      print_error("call to dlinfo() has failed", "");
       return NULL;
     }
     path_ = lm->l_name;
@@ -212,6 +274,7 @@ public:
     if (::GetModuleFileNameW(handle_, reinterpret_cast<wchar_t *>(&buf), sizeof(buf)-1) == 0 ||
         ::GetLastError() != ERROR_SUCCESS)
     {
+      print_error("call to GetModuleFileNameW() has failed", "");
       return NULL;
     }
 
