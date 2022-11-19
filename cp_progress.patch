@@ -1,0 +1,214 @@
+Patch for coreutils 9.1 to copy a directory with a progress shown.
+
+Better alternatives:
+https://github.com/dmerejkowsky/pycp
+https://github.com/darealshinji/vcp
+
+--- a/src/copy.c
++++ b/src/copy.c
+@@ -1815,16 +1815,80 @@
+               && ! overwrite_ok (x, dst_name, dst_dirfd, dst_relname, dst_sb)));
+ }
+ 
++// GPL3, Copyright (C) 2016 Xfennec, CQFD Corp.
++// https://github.com/Xfennec/progress/blob/master/sizes.c
++static const char *sizes[] = { "EiB", "PiB", "TiB", "GiB", "MiB", "KiB", "B" };
++static const uint64_t exbibytes = 1024ULL * 1024ULL * 1024ULL *
++                                  1024ULL * 1024ULL * 1024ULL;
++
++static void format_size(uint64_t size, char *result)
++{
++    uint64_t multiplier;
++    int i;
++
++    multiplier = exbibytes;
++
++    for (i = 0 ; i < (sizeof(sizes)/sizeof(*sizes)) ; i++, multiplier /= 1024) {
++        if (size < multiplier)
++            continue;
++        if (size % multiplier == 0)
++            sprintf(result, "%" PRIu64 " %s", size / multiplier, sizes[i]);
++        else
++            sprintf(result, "%.1f %s", (float) size / multiplier, sizes[i]);
++        return;
++    }
++
++    strcpy(result, "0 B");
++    return;
++}
++
++static uint64_t bytes_progress = 0;
++static uint64_t bytes_total = 0;
++static char buf_total[64] = {0};
++
++static int
++sum_sizes (const char *fpath, const struct stat *statbuf, int typeflag,
++           struct FTW *ftwbuf)
++{
++  // fpath is a regular file
++  if (typeflag == FTW_F)
++    bytes_total += statbuf->st_size;
++
++  return 0;
++}
++
++void retrieve_directory_size(const char *path)
++{
++  if (nftw(path, sum_sizes, 20, FTW_PHYS) == 0 && bytes_total > 0)
++    format_size(bytes_total, buf_total);
++}
++
+ /* Print --verbose output on standard output, e.g. 'new' -> 'old'.
+    If BACKUP_DST_NAME is non-NULL, then also indicate that it is
+    the name of a backup file.  */
+ static void
+ emit_verbose (char const *src, char const *dst, char const *backup_dst_name)
+ {
+-  printf ("%s -> %s", quoteaf_n (0, src), quoteaf_n (1, dst));
+-  if (backup_dst_name)
+-    printf (_(" (backup: %s)"), quoteaf (backup_dst_name));
+-  putchar ('\n');
++//  printf ("%s -> %s", quoteaf_n (0, src), quoteaf_n (1, dst));
++//  if (backup_dst_name)
++//    printf (_(" (backup: %s)"), quoteaf (backup_dst_name));
++//  putchar ('\n');
++
++  struct stat st;
++  char buf[64];
++
++  if (lstat(src, &st) == -1 || bytes_total == 0)
++    return;
++
++  if (S_ISREG (st.st_mode))
++    bytes_progress += st.st_size;
++
++  format_size(bytes_progress, buf);
++
++  if (buf_total[0] == 0)
++    printf ("%s   %s --> %s\n", buf, quoteaf_n (0, src), quoteaf_n (1, dst));
++  else
++    printf ("%s of %s   %s --> %s\n", buf, buf_total, quoteaf_n (0, src), quoteaf_n (1, dst));
+ }
+ 
+ /* A wrapper around "setfscreatecon (NULL)" that exits upon failure.  */
+@@ -2346,7 +2410,7 @@
+      directory.  So --verbose should not announce anything until we're
+      sure we'll create a directory.  Also don't announce yet when moving
+      so we can distinguish renames versus copies.  */
+-  if (x->verbose && !x->move_mode && !S_ISDIR (src_mode))
++  //if (x->verbose && !x->move_mode && !S_ISDIR (src_mode))
+     emit_verbose (src_name, dst_name, dst_backup);
+ 
+   /* Associate the destination file name with the source device and inode
+--- a/src/cp.c
++++ b/src/cp.c
+@@ -38,7 +38,7 @@
+ #include "acl.h"
+ 
+ /* The official name of this program (e.g., no 'g' prefix).  */
+-#define PROGRAM_NAME "cp"
++#define PROGRAM_NAME "cp-progress"
+ 
+ #define AUTHORS \
+   proper_name ("Torbjorn Granlund"), \
+@@ -940,18 +940,54 @@
+   char *target_directory = NULL;
+   bool no_target_directory = false;
+   char const *scontext = NULL;
++  char const *src = NULL;
++  struct stat st;
+ 
+   initialize_main (&argc, &argv);
+   set_program_name (argv[0]);
+-  setlocale (LC_ALL, "");
+-  bindtextdomain (PACKAGE, LOCALEDIR);
+-  textdomain (PACKAGE);
++  //setlocale (LC_ALL, "");
++  //bindtextdomain (PACKAGE, LOCALEDIR);
++  //textdomain (PACKAGE);
+ 
+   atexit (close_stdin);
+ 
+   selinux_enabled = (0 < is_selinux_enabled ());
+   cp_option_init (&x);
+ 
++  if ((argc == 2 && strcmp (argv[1], "--help") == 0) || argc != 3)
++    die (EXIT_FAILURE, 0, "Usage: " PROGRAM_NAME " SOURCE DEST");
++
++  optind = 1;
++  src = argv[optind];
++
++  if (stat (src, &st) != 0)
++    die (EXIT_FAILURE, errno, "failed to access %s", quoteaf (src));
++
++  if (! S_ISDIR (st.st_mode))
++    die (EXIT_FAILURE, 0, "source %s is not a directory", quoteaf (src));
++
++  retrieve_directory_size(src);
++
++  // -a
++  x.dereference = DEREF_NEVER;
++  x.preserve_links = true;
++  x.preserve_ownership = true;
++  x.preserve_mode = true;
++  x.preserve_timestamps = true;
++  x.require_preserve = true;
++  if (selinux_enabled)
++     x.preserve_security_context = true;
++  x.preserve_xattr = true;
++  x.reduce_diagnostics = true;
++  x.recursive = true;
++
++  // -f
++  x.unlink_dest_after_failed_open = true;
++
++  // --strip-trailing-slashes
++  //remove_trailing_slashes = true;
++
++#if 0
+   while ((c = getopt_long (argc, argv, "abdfHilLnprst:uvxPRS:TZ",
+                            long_opts, NULL))
+          != -1)
+@@ -1208,6 +1244,8 @@
+                             "built without xattr support"));
+ #endif
+ 
++#endif //0
++
+   /* Allocate space for remembering copied and created files.  */
+ 
+   hash_init ();
+--- a/src/copy.h
++++ b/src/copy.h
+@@ -19,6 +19,15 @@
+ #ifndef COPY_H
+ # define COPY_H
+ 
++#ifndef _XOPEN_SOURCE
++# define _XOPEN_SOURCE 500
++#endif
++#if _XOPEN_SOURCE < 500
++# undef _XOPEN_SOURCE
++# define _XOPEN_SOURCE 500
++#endif
++#include <ftw.h>
++
+ # include <stdbool.h>
+ # include "hash.h"
+ 
+@@ -313,4 +322,6 @@
+   _GL_ATTRIBUTE_NONNULL () _GL_ATTRIBUTE_PURE;
+ mode_t cached_umask (void);
+ 
++void retrieve_directory_size (const char *path);
++
+ #endif
+--- /dev/null
++++ b/cp_progress.mk
+@@ -0,0 +1,6 @@
++include Makefile
++
++
++cp_progress: $(BUILT_SOURCES) src/cp
++	strip src/cp -o $@
++
