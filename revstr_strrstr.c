@@ -183,26 +183,52 @@ char *revstr2_utf8(char *dest, size_t szdest, const char *source)
 
 char *strrstr(const char *haystack, const char *needle)
 {
-  char *a, *b, *c, *d;
-  a = revstr(haystack);
-  b = revstr(needle);
-  c = strstr(a, b);
-  d = c ? (char *)haystack + strlen(c) - strlen(needle) : NULL;
-  free(a);
-  free(b);
-  return d;
+  size_t len_n = strlen(needle);
+  size_t len_hs = strlen(haystack);
+  char *p;
+
+  if (len_hs < len_n) {
+    return NULL;
+  } else if (len_hs == len_n && strcmp(haystack, needle) == 0) {
+    return (char *)haystack;
+  }
+
+  p = (char *)haystack + len_hs;
+
+  while (p != haystack) {
+    p--;
+
+    if (*p && *needle && strncmp(p, needle, len_n) == 0) {
+      return p;
+    }
+  }
+
+  return NULL;
 }
 
 char *strrcasestr(const char *haystack, const char *needle)
 {
-  char *a, *b, *c, *d;
-  a = revstr(haystack);
-  b = revstr(needle);
-  c = strcasestr(a, b);
-  d = c ? (char *)haystack + strlen(c) - strlen(needle) : NULL;
-  free(a);
-  free(b);
-  return d;
+  size_t len_n = strlen(needle);
+  size_t len_hs = strlen(haystack);
+  char *p;
+
+  if (len_hs < len_n) {
+    return NULL;
+  } else if (len_hs == len_n && strcasecmp(haystack, needle) == 0) {
+    return (char *)haystack;
+  }
+
+  p = (char *)haystack + len_hs;
+
+  while (p != haystack) {
+    p--;
+
+    if (*p && *needle && strncasecmp(p, needle, len_n) == 0) {
+      return p;
+    }
+  }
+
+  return NULL;
 }
 
 /* tests */
