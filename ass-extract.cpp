@@ -4,11 +4,14 @@
 #include <string.h>
 
 
-void ass_uudecode(std::string &src, FILE *fp)
+static std::string src;
+
+void ass_uudecode(const std::string &data, FILE *fp, bool flush)
 {
   unsigned char dst[3], cpy[4];
 
   if (!fp) return;
+  if (!flush) src += data;
 
   while (src.size() >= sizeof(cpy)) {
     dst[0] = ((src.at(0) - 33) << 2) | ((src.at(1) - 33) >> 4);
@@ -17,6 +20,10 @@ void ass_uudecode(std::string &src, FILE *fp)
     fwrite(dst, 1, sizeof(dst), fp);
     src.erase(0, sizeof(cpy));
   }
+
+  if (!flush) return;
+
+  /* flush remains of the src buffer */
 
   memset(cpy, 33, sizeof(cpy));
 
@@ -36,11 +43,13 @@ void ass_uudecode(std::string &src, FILE *fp)
   dst[1] = ((cpy[1] - 33) << 4) | ((cpy[2] - 33) >> 2);
   dst[2] = ((cpy[2] - 33) << 6) |  (cpy[3] - 33);
   fwrite(dst, 1, src.size()-1, fp);
+
+  src.clear();
 }
 
-inline void err(const std::string &s1, const std::string &s2) {
-  std::cerr << "error: " << s1 << s2 << std::endl;
-  std::exit(1);
+inline void ass_uudecode_flush(FILE *fp) {
+  ass_uudecode("", fp, true);
+  fclose(fp);
 }
 
 bool ass_extract(const std::string &file)
@@ -51,13 +60,29 @@ bool ass_extract(const std::string &file)
   size_t len;
 
   ifs.open(file.c_str(), std::fstream::in);
-  if (!ifs.is_open()) err("cannot open file for reading: ", file);
+
+  if (!ifs.is_open()) {
+    std::cerr << "error: cannot open file for reading: "
+      << file << std::endl;
+    return false;
+  }
 
   /* check first line */
-  if (!std::getline(ifs, line)) err("cannot read first line from file: ", file);
+
+  if (!std::getline(ifs, line)) {
+    std::cerr << "error: cannot read first line from file: "
+      << file << std::endl;
+    return false;
+  }
+
   if (line.back() == '\r') line.pop_back();
-  if (line != "[Script Info]" && line != "\xEF\xBB\xBF[Script Info]") {
-    err("file has incorrect first line: ", file);
+
+  if (line != "[Script Info]" && 
+      line != "\xEF\xBB\xBF[Script Info]")
+  {
+    std::cerr << "error: file has incorrect first line: "
+      << file << std::endl;
+    return false;
   }
 
   /* seek for [Fonts] or [Graphics] group */
@@ -76,28 +101,28 @@ JMP_DEC:
   /* decode files */
   while (std::getline(ifs, line)) {
     if (line.back() == '\r') line.pop_back();
+
     if (line == "[Events]") break;
 
-    if (line.empty() || line == "[Fonts]" ||
+    if (line.empty() ||
+        line == "[Fonts]" ||
         line == "[Graphics]")
     {
       if (fp) {
-        fclose(fp);
+        ass_uudecode_flush(fp);
         fp = NULL;
       }
       continue;
     }
 
+    /* filename */
     if (line.compare(0, 10, "fontname: ") == 0 ||
         line.compare(0, 10, "filename: ") == 0)
     {
-      if (fp) {
-        fclose(fp);
-        fp = NULL;
-      }
-
+      if (fp) ass_uudecode_flush(fp);
       line.erase(0, 10);
 
+      /* rename .ttf file */
       if ((len = line.size()) > 6 &&
           (line.compare(len-6, 6, "_0.ttf") == 0 ||
            line.compare(len-6, 6, "_0.TTF") == 0))
@@ -105,16 +130,21 @@ JMP_DEC:
         line.erase(len-6, 2);
       }
 
-      fp = fopen(line.c_str(), "wb");
-      if (!fp) err("cannot open output file: ", line);
+      if ((fp = fopen(line.c_str(), "wb")) == NULL)
+      {
+        std::cerr << "error: cannot open output file: "
+          << line << std::endl;
+        return false;
+      }
+
       std::cout << line << std::endl;
       continue;
     }
 
-    ass_uudecode(line, fp);
+    ass_uudecode(line, fp, false);
   }
 
-  if (fp) fclose(fp);
+  if (fp) ass_uudecode_flush(fp);
 
   return true;
 }
