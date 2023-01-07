@@ -1,44 +1,111 @@
-#include <fstream>
+/**
+ Copyright (c) 2014, Christoph "Youka" Spanknebel
+ Copyright (c) 2023, djcj <djcj@gmx.de>
+
+ This software is provided 'as-is', without any express or implied warranty.
+ In no event will the authors be held liable for any damages arising from the
+ use of this software.
+
+ Permission is granted to anyone to use this software for any purpose, including
+ commercial applications, and to alter it and redistribute it freely, subject to
+ the following restrictions:
+
+ 1. The origin of this software must not be misrepresented; you must not claim
+    that you wrote the original software. If you use this software in a product,
+    an acknowledgment in the product documentation would be appreciated but is
+    not required.
+ 2. Altered source versions must be plainly marked as such, and must not be
+    misrepresented as being the original software.
+ 3. This notice may not be removed or altered from any source distribution.
+*/
+#include <algorithm>
 #include <iostream>
+#include <fstream>
+#include <vector>
 #include <stdio.h>
 #include <string.h>
 #ifdef _WIN32
-#include <direct.h>
+#include <direct.h> /* _mkdir() */
 #else
-#include <sys/stat.h>
+#include <sys/stat.h> /* mkdir(2) */
 #endif
 
 
-static std::string src;
+enum {
+  M_EXTRACT = 0,
+  M_STRIP   = 1,
+  M_LIST    = 2
+};
 
-void ass_uudecode(const std::string &data, FILE *fp, bool flush)
+static std::string src_buf;
+
+
+static bool ass_uuencode(const std::string &file, std::fstream &ofs)
+{
+  FILE *fp;
+  unsigned char src[3], dst[4];
+  size_t read, len, wrote_line = 0;
+
+  if ((fp = fopen(file.c_str(), "rb")) == NULL) {
+    std::cerr << "error: cannot open file for reading: "
+      << file << std::endl;
+    return false;
+  }
+
+  while ((read = fread(src, 1, sizeof(src), fp)) != 0) {
+    memset(src+read, 0, sizeof(src)-read);
+
+    dst[0] =                          (src[0] >> 2)  + 33;
+    dst[1] = (((src[0] & 0x3) << 4) | (src[1] >> 4)) + 33;
+    dst[2] = (((src[1] & 0xf) << 2) | (src[2] >> 6)) + 33;
+    dst[3] =   (src[2] & 0x3f)                       + 33;
+
+    len = std::min(read+1, sizeof(dst));
+    ofs.write((char *)dst, len);
+    wrote_line += len;
+
+    if (wrote_line >= 80 && !feof(fp)){
+      ofs << "\r\n";
+      wrote_line = 0;
+    }
+  }
+
+  if (wrote_line != 0) {
+    ofs << "\r\n";
+  }
+
+  fclose(fp);
+  return true;
+}
+
+static void ass_uudecode(const std::string &data, FILE *fp, bool flush)
 {
   unsigned char dst[3], cpy[4];
 
   if (!fp) return;
-  if (!flush) src += data;
+  if (!flush) src_buf += data;
 
-  while (src.size() >= sizeof(cpy)) {
-    dst[0] = ((src.at(0) - 33) << 2) | ((src.at(1) - 33) >> 4);
-    dst[1] = ((src.at(1) - 33) << 4) | ((src.at(2) - 33) >> 2);
-    dst[2] = ((src.at(2) - 33) << 6) |  (src.at(3) - 33);
+  while (src_buf.size() >= sizeof(cpy)) {
+    dst[0] = ((src_buf.at(0) - 33) << 2) | ((src_buf.at(1) - 33) >> 4);
+    dst[1] = ((src_buf.at(1) - 33) << 4) | ((src_buf.at(2) - 33) >> 2);
+    dst[2] = ((src_buf.at(2) - 33) << 6) |  (src_buf.at(3) - 33);
     fwrite(dst, 1, sizeof(dst), fp);
-    src.erase(0, sizeof(cpy));
+    src_buf.erase(0, sizeof(cpy));
   }
 
   if (!flush) return;
 
-  /* flush remains of the src buffer */
+  /* flush remains of the src_buf buffer */
 
   memset(cpy, 33, sizeof(cpy));
 
-  switch (src.size()) {
+  switch (src_buf.size()) {
     case 3:
-      cpy[2] = src.at(2);
+      cpy[2] = src_buf.at(2);
     case 2:
-      cpy[1] = src.at(1);
+      cpy[1] = src_buf.at(1);
     case 1:
-      cpy[0] = src.at(0);
+      cpy[0] = src_buf.at(0);
       break;
     default:
       return;
@@ -47,32 +114,96 @@ void ass_uudecode(const std::string &data, FILE *fp, bool flush)
   dst[0] = ((cpy[0] - 33) << 2) | ((cpy[1] - 33) >> 4);
   dst[1] = ((cpy[1] - 33) << 4) | ((cpy[2] - 33) >> 2);
   dst[2] = ((cpy[2] - 33) << 6) |  (cpy[3] - 33);
-  fwrite(dst, 1, src.size()-1, fp);
+  fwrite(dst, 1, src_buf.size()-1, fp);
 
-  src.clear();
+  src_buf.clear();
 }
 
-inline void ass_uudecode_flush(FILE *fp) {
+inline
+static void ass_uudecode_flush(FILE *fp) {
   ass_uudecode("", fp, true);
   if (fp) fclose(fp);
 }
 
+static std::string check_first_line(std::fstream &ifs, const std::string &file)
+{
+  std::string line;
+
+  if (!ifs.is_open()) return {};
+
+  if (!std::getline(ifs, line)) {
+    std::cerr << "error: cannot read first line from file: "
+      << file << std::endl;
+    return {};
+  }
+
+  if (line.back() == '\r') line.pop_back();
+
+  if (line != "[Script Info]" && 
+      line != "\xEF\xBB\xBF[Script Info]")
+  {
+    std::cerr << "error: file has incorrect first line: "
+      << file << std::endl;
+    return {};
+  }
+
+  return line;
+}
+
+static bool attach_fonts(std::fstream &ofs, const std::vector<std::string> &fonts)
+{
+  size_t pos, len;
+
+  for (const auto &e : fonts) {
+    std::string s = e;
+
+#ifdef _WIN32
+    if ((pos = s.find_last_of("\\/")) != std::string::npos)
+#else
+    if ((pos = s.rfind('/')) != std::string::npos)
+#endif
+    {
+      s.erase(0, pos+1);
+    }
+
+    if ((len = s.size()) > 4 &&
+        strcasecmp(s.c_str() + (len-4), ".TTF") == 0)
+    {
+      s.insert(len-4, "_0");
+    } else {
+      s += "_0";
+    }
+    ofs << "fontname: " << s << "\r\n";
+
+    if (!ass_uuencode(e, ofs)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 /**
  * file: .ass input
+ * mode:
+ *   M_EXTRACT: extract all attachments; strip .ass in "stripped" is not empty
+ *   M_STRIP: strip only
+ *   M_LIST: list only attachments
  * dir: attachment output directory; empty == current dir
- * extract: whether to extract attachments
  * stripped: stripped .ass output; empty == disabled
  */
-bool ass_extract(const std::string &file, std::string dir, bool extract, const std::string &stripped)
+bool ass_extract(const std::string &file, int mode, std::string dir, const std::string &stripped)
 {
   std::string line;
   std::fstream ifs, ofs;
+  const char *group = "";
   FILE *fp = NULL;
   size_t len;
 
-  if (!extract) {
-    if (stripped.empty()) return true; /* nothing to do */
-    dir.clear();
+  if (mode != M_EXTRACT) dir.clear();
+
+  if (mode == M_STRIP && stripped.empty()) {
+    return true;
   }
 
   ifs.open(file.c_str(), std::fstream::in);
@@ -83,8 +214,8 @@ bool ass_extract(const std::string &file, std::string dir, bool extract, const s
     return false;
   }
 
-  if (!stripped.empty() && stripped != file) {
-    ofs.open(stripped.c_str(), std::fstream::out|std::fstream::binary);
+  if (mode != M_LIST && !stripped.empty() && stripped != file) {
+    ofs.open(stripped.c_str(), std::fstream::out);
 
     if (!ofs.is_open()) {
       std::cerr << "error: cannot open file for writing: "
@@ -94,31 +225,24 @@ bool ass_extract(const std::string &file, std::string dir, bool extract, const s
   }
 
   /* check first line */
-
-  if (!std::getline(ifs, line)) {
-    std::cerr << "error: cannot read first line from file: "
-      << file << std::endl;
-    return false;
-  }
-
-  if (line.back() == '\r') line.pop_back();
-
-  if (line != "[Script Info]" && 
-      line != "\xEF\xBB\xBF[Script Info]")
-  {
-    std::cerr << "error: file has incorrect first line: "
-      << file << std::endl;
-    return false;
-  }
-
+  line = check_first_line(ifs, file);
+  if (line.empty()) return false;
   if (ofs.is_open()) ofs << line << "\r\n";
 
   /* seek for [Fonts] or [Graphics] group */
   while (std::getline(ifs, line)) {
     if (line.back() == '\r') line.pop_back();
+
+    if (line == "[Fonts]") {
+      group = "[Fonts] ";
+      goto JMP_DEC;
+    } else if (line == "[Graphics]") {
+      group = "[Graphics] ";
+      goto JMP_DEC;
+    }
+
     if (ofs.is_open()) ofs << line << "\r\n";
     if (line == "[Events]") break;
-    if (line == "[Fonts]" || line == "[Graphics]") goto JMP_DEC;
     if (line.empty()) continue;
   }
 
@@ -154,17 +278,27 @@ JMP_DEC:
   while (std::getline(ifs, line)) {
     if (line.back() == '\r') line.pop_back();
 
-    if (line == "[Events]") break;
+    if (line == "[Events]") {
+      if (ofs.is_open()) ofs << "[Events]\r\n";
+      break;
+    }
 
-    if (line.empty() ||
-        line == "[Fonts]" ||
-        line == "[Graphics]")
+    if (line.empty())
     {
+JMP_FLUSH:
       if (fp) {
         ass_uudecode_flush(fp);
         fp = NULL;
       }
       continue;
+    }
+
+    if (line == "[Fonts]") {
+      group = "[Fonts] ";
+      goto JMP_FLUSH;
+    } else if (line == "[Graphics]") {
+      group = "[Graphics] ";
+      goto JMP_FLUSH;
     }
 
     /* filename */
@@ -175,23 +309,25 @@ JMP_DEC:
       line.erase(0, 10);
 
       /* rename .ttf file */
-      if ((len = line.size()) > 6 &&
-          (line.compare(len-6, 6, "_0.ttf") == 0 ||
-           line.compare(len-6, 6, "_0.TTF") == 0))
-      {
-        line.erase(len-6, 2);
+      if (mode == M_EXTRACT) {
+        if ((len = line.size()) > 6 &&
+            strcasecmp(line.c_str() + (len-6), "_0.TTF") == 0)
+        {
+          line.erase(len-6, 2);
+        }
+
+        line.insert(0, dir);
+
+        if ((fp = fopen(line.c_str(), "wb")) == NULL) {
+          std::cerr << "error: cannot open output file: "
+            << line << std::endl;
+          return false;
+        }
       }
 
-      line.insert(0, dir);
-
-      if (extract && (fp = fopen(line.c_str(), "wb")) == NULL)
-      {
-        std::cerr << "error: cannot open output file: "
-          << line << std::endl;
-        return false;
+      if (mode != M_STRIP) {
+        std::cout << group << line << std::endl;
       }
-
-      std::cout << line << std::endl;
       continue;
     }
 
@@ -205,16 +341,146 @@ JMP_DEC:
       if (line.back() == '\r') line.pop_back();
       ofs << line << "\r\n";
     }
+
+    std::cout << "file `" << stripped << "' successfully written" << std::endl;
   }
 
   return true;
 }
 
+bool ass_attach(const std::string &infile,
+                const std::string &outfile,
+                std::vector<std::string> &lfonts,
+                std::vector<std::string> &lgraphics)
+{
+  std::fstream ifs, ofs;
+  std::string line;
+  size_t pos;
+  bool has_fonts = false;
+  bool has_graphics = false;
+
+  if (lfonts.empty() && lgraphics.empty()) {
+    return false;
+  }
+
+  ifs.open(infile.c_str(), std::fstream::in);
+
+  if (!ifs.is_open()) {
+    std::cerr << "error: cannot open file for reading: "
+      << infile << std::endl;
+    return false;
+  }
+
+  ofs.open(outfile.c_str(), std::fstream::out);
+
+  if (!ofs.is_open()) {
+    std::cerr << "error: cannot open file for writing: "
+      << outfile << std::endl;
+    return false;
+  }
+
+  line = check_first_line(ifs, infile);
+  if (line.empty()) return false;
+  ofs << line << "\r\n";
+
+  /* seek for [Fonts] or [Graphics] group */
+  while (std::getline(ifs, line)) {
+    if (line.back() == '\r') line.pop_back();
+
+    if (line == "[Fonts]") {
+      has_fonts = true;
+      ofs << "[Fonts]\r\n";
+
+      if (!attach_fonts(ofs, lfonts)) {
+        return false;
+      }
+      continue;
+    }
+    else if (line == "[Graphics]") {
+      has_graphics = true;
+      ofs << line << "\r\n";
+
+      for (const auto &e : lgraphics) {
+        std::string s = e;
+
+        if ((pos = s.rfind('/')) != std::string::npos) {
+          s.erase(0, pos-1);
+        }
+        ofs << "filename: " << s << "\r\n";
+
+        if (!ass_uuencode(e, ofs)) {
+          return false;
+        }
+      }
+      continue;
+    }
+
+    if (line == "[Events]") break;
+    ofs << line << "\r\n";
+  }
+
+  if (line != "[Events]") return false;
+
+  if (!has_fonts && !lfonts.empty()) {
+    ofs << "[Fonts]\r\n";
+
+    if (!attach_fonts(ofs, lfonts)) {
+      return false;
+    }
+    ofs << "\r\n";
+  }
+
+  if (!has_graphics && !lgraphics.empty()) {
+    ofs << "[Graphics]\r\n";
+
+    for (const auto &e : lgraphics) {
+      std::string s = e;
+
+      if ((pos = s.rfind('/')) != std::string::npos) {
+        s.erase(0, pos-1);
+      }
+      ofs << "filename: " << s << "\r\n";
+
+      if (!ass_uuencode(e, ofs)) {
+        return false;
+      }
+    }
+    ofs << "\r\n";
+  }
+
+  ofs << "[Events]\r\n";
+
+  while (std::getline(ifs, line)) {
+    if (line.back() == '\r') line.pop_back();
+    ofs << line << "\r\n";
+  }
+
+  std::cout << "file `" << outfile << "' successfully written" << std::endl;
+
+  return true;
+}
+
+
 int main()
 {
-  if (ass_extract("test.ass", "out", true, "test-stripped.ass") == true) {
-    return 0;
-  }
+  /* list */
+  //if (ass_extract("test.ass", M_LIST, {}, {})) return 0;
+
+  /* extract */
+  if (ass_extract("test.ass", M_EXTRACT, "out", "test-stripped.ass")) return 0;
+
+  /* attach */
+/*
+  std::vector<std::string> lfonts, lgraphics;
+  lfonts.push_back("out/DejaVuSans-Bold.ttf");
+  lfonts.push_back("out/DejaVuSansMono-Bold.ttf");
+  lfonts.push_back("out/DejaVuSansMono.ttf");
+  lfonts.push_back("out/DejaVuSans.ttf");
+  lfonts.push_back("out/DejaVuSerif-Bold.ttf");
+  lfonts.push_back("out/DejaVuSerif.ttf");
+  if (ass_attach("test-stripped.ass", "test-new.ass", lfonts, lgraphics)) return 0;
+*/
+
   return 1;
 }
 
