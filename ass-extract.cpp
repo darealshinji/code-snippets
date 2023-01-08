@@ -31,16 +31,19 @@
 #endif
 
 
+namespace ass
+{
+
 enum {
   M_EXTRACT = 0,
   M_STRIP   = 1,
   M_LIST    = 2
 };
 
-static std::string src_buf;
+std::string src_buf;
 
 
-static bool ass_uuencode(const std::string &file, std::fstream &ofs)
+bool uuencode(const std::string &file, std::fstream &ofs)
 {
   FILE *fp;
   unsigned char src[3], dst[4];
@@ -78,54 +81,50 @@ static bool ass_uuencode(const std::string &file, std::fstream &ofs)
   return true;
 }
 
-static void ass_uudecode(const std::string &data, FILE *fp, bool flush)
+void uudecode(const std::string &data, FILE *fp)
 {
-  unsigned char dst[3], cpy[4];
+  unsigned char dst[3];
 
   if (!fp) return;
   if (!flush) src_buf += data;
 
-  while (src_buf.size() >= sizeof(cpy)) {
+  while (src_buf.size() >= 4) {
     dst[0] = ((src_buf.at(0) - 33) << 2) | ((src_buf.at(1) - 33) >> 4);
     dst[1] = ((src_buf.at(1) - 33) << 4) | ((src_buf.at(2) - 33) >> 2);
     dst[2] = ((src_buf.at(2) - 33) << 6) |  (src_buf.at(3) - 33);
     fwrite(dst, 1, sizeof(dst), fp);
-    src_buf.erase(0, sizeof(cpy));
+    src_buf.erase(0, 4);
   }
+}
 
-  if (!flush) return;
+/* flush remains of the src_buf buffer */
+void uudecode_flush(FILE *fp)
+{
+  unsigned char src[3], dst[4];
 
-  /* flush remains of the src_buf buffer */
-
-  memset(cpy, 33, sizeof(cpy));
+  memset(src, 33, 3);
 
   switch (src_buf.size()) {
     case 3:
-      cpy[2] = src_buf.at(2);
+      src[2] = src_buf.at(2);
     case 2:
-      cpy[1] = src_buf.at(1);
+      src[1] = src_buf.at(1);
     case 1:
-      cpy[0] = src_buf.at(0);
+      src[0] = src_buf.at(0);
       break;
     default:
       return;
   }
 
-  dst[0] = ((cpy[0] - 33) << 2) | ((cpy[1] - 33) >> 4);
-  dst[1] = ((cpy[1] - 33) << 4) | ((cpy[2] - 33) >> 2);
-  dst[2] = ((cpy[2] - 33) << 6) |  (cpy[3] - 33);
+  dst[0] = ((src[0] - 33) << 2) | ((src[1] - 33) >> 4);
+  dst[1] = ((src[1] - 33) << 4) | ((src[2] - 33) >> 2);
+  dst[2] = ((src[2] - 33) << 6) |  (src[3] - 33);
   fwrite(dst, 1, src_buf.size()-1, fp);
 
   src_buf.clear();
 }
 
-inline
-static void ass_uudecode_flush(FILE *fp) {
-  ass_uudecode("", fp, true);
-  if (fp) fclose(fp);
-}
-
-static std::string check_first_line(std::fstream &ifs, const std::string &file)
+std::string check_first_line(std::fstream &ifs, const std::string &file)
 {
   std::string line;
 
@@ -175,7 +174,7 @@ static bool attach_fonts(std::fstream &ofs, const std::vector<std::string> &font
     }
     ofs << "fontname: " << s << "\r\n";
 
-    if (!ass_uuencode(e, ofs)) {
+    if (!uuencode(e, ofs)) {
       return false;
     }
   }
@@ -192,7 +191,7 @@ static bool attach_fonts(std::fstream &ofs, const std::vector<std::string> &font
  * dir: attachment output directory; empty == current dir
  * stripped: stripped .ass output; empty == disabled
  */
-bool ass_extract(const std::string &file, int mode, std::string dir, const std::string &stripped)
+bool extract(const std::string &file, int mode, std::string dir, const std::string &stripped)
 {
   std::string line;
   std::fstream ifs, ofs;
@@ -287,7 +286,7 @@ JMP_DEC:
     {
 JMP_FLUSH:
       if (fp) {
-        ass_uudecode_flush(fp);
+        uudecode_flush(fp);
         fp = NULL;
       }
       continue;
@@ -305,7 +304,7 @@ JMP_FLUSH:
     if (line.compare(0, 10, "fontname: ") == 0 ||
         line.compare(0, 10, "filename: ") == 0)
     {
-      if (fp) ass_uudecode_flush(fp);
+      if (fp) uudecode_flush(fp);
       line.erase(0, 10);
 
       /* rename .ttf file */
@@ -331,10 +330,10 @@ JMP_FLUSH:
       continue;
     }
 
-    ass_uudecode(line, fp, false);
+    uudecode(line, fp);
   }
 
-  ass_uudecode_flush(fp);
+  uudecode_flush(fp);
 
   if (ofs.is_open()) {
     while (std::getline(ifs, line)) {
@@ -348,10 +347,10 @@ JMP_FLUSH:
   return true;
 }
 
-bool ass_attach(const std::string &infile,
-                const std::string &outfile,
-                std::vector<std::string> &lfonts,
-                std::vector<std::string> &lgraphics)
+bool attach(const std::string &infile,
+            const std::string &outfile,
+            std::vector<std::string> &lfonts,
+            std::vector<std::string> &lgraphics)
 {
   std::fstream ifs, ofs;
   std::string line;
@@ -408,7 +407,7 @@ bool ass_attach(const std::string &infile,
         }
         ofs << "filename: " << s << "\r\n";
 
-        if (!ass_uuencode(e, ofs)) {
+        if (!uuencode(e, ofs)) {
           return false;
         }
       }
@@ -441,7 +440,7 @@ bool ass_attach(const std::string &infile,
       }
       ofs << "filename: " << s << "\r\n";
 
-      if (!ass_uuencode(e, ofs)) {
+      if (!uuencode(e, ofs)) {
         return false;
       }
     }
@@ -460,14 +459,16 @@ bool ass_attach(const std::string &infile,
   return true;
 }
 
+} /* namespace end */
 
-int main()
+
+int main(int argc, char *argv[])
 {
   /* list */
-  //if (ass_extract("test.ass", M_LIST, {}, {})) return 0;
+  if (ass::extract("test.ass", ass::M_LIST, {}, {})) return 0;
 
   /* extract */
-  if (ass_extract("test.ass", M_EXTRACT, "out", "test-stripped.ass")) return 0;
+  //if (ass::extract("test.ass", ass::M_EXTRACT, "out", "test-stripped.ass")) return 0;
 
   /* attach */
 /*
@@ -478,7 +479,7 @@ int main()
   lfonts.push_back("out/DejaVuSans.ttf");
   lfonts.push_back("out/DejaVuSerif-Bold.ttf");
   lfonts.push_back("out/DejaVuSerif.ttf");
-  if (ass_attach("test-stripped.ass", "test-new.ass", lfonts, lgraphics)) return 0;
+  if (ass::attach("test-stripped.ass", "test-new.ass", lfonts, lgraphics)) return 0;
 */
 
   return 1;
