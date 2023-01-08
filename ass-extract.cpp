@@ -86,7 +86,8 @@ void uudecode(const std::string &data, FILE *fp)
   unsigned char dst[3];
 
   if (!fp) return;
-  if (!flush) src_buf += data;
+
+  src_buf += data;
 
   while (src_buf.size() >= 4) {
     dst[0] = ((src_buf.at(0) - 33) << 2) | ((src_buf.at(1) - 33) >> 4);
@@ -100,9 +101,9 @@ void uudecode(const std::string &data, FILE *fp)
 /* flush remains of the src_buf buffer */
 void uudecode_flush(FILE *fp)
 {
-  unsigned char src[3], dst[4];
+  unsigned char src[4], dst[3];
 
-  memset(src, 33, 3);
+  memset(src, 33, sizeof(src));
 
   switch (src_buf.size()) {
     case 3:
@@ -282,22 +283,20 @@ JMP_DEC:
       break;
     }
 
-    if (line.empty())
-    {
-JMP_FLUSH:
+    if (line == "[Fonts]") {
+      group = "[Fonts] ";
+      line.clear(); /* forces a flush */
+    } else if (line == "[Graphics]") {
+      group = "[Graphics] ";
+      line.clear(); /* forces a flush */
+    }
+
+    if (line.empty()) {
       if (fp) {
         uudecode_flush(fp);
         fp = NULL;
       }
       continue;
-    }
-
-    if (line == "[Fonts]") {
-      group = "[Fonts] ";
-      goto JMP_FLUSH;
-    } else if (line == "[Graphics]") {
-      group = "[Graphics] ";
-      goto JMP_FLUSH;
     }
 
     /* filename */
@@ -349,8 +348,8 @@ JMP_FLUSH:
 
 bool attach(const std::string &infile,
             const std::string &outfile,
-            std::vector<std::string> &lfonts,
-            std::vector<std::string> &lgraphics)
+            std::vector<std::string> &vfonts,
+            std::vector<std::string> &vgraphics)
 {
   std::fstream ifs, ofs;
   std::string line;
@@ -358,7 +357,7 @@ bool attach(const std::string &infile,
   bool has_fonts = false;
   bool has_graphics = false;
 
-  if (lfonts.empty() && lgraphics.empty()) {
+  if (vfonts.empty() && vgraphics.empty()) {
     return false;
   }
 
@@ -390,7 +389,7 @@ bool attach(const std::string &infile,
       has_fonts = true;
       ofs << "[Fonts]\r\n";
 
-      if (!attach_fonts(ofs, lfonts)) {
+      if (!attach_fonts(ofs, vfonts)) {
         return false;
       }
       continue;
@@ -399,7 +398,7 @@ bool attach(const std::string &infile,
       has_graphics = true;
       ofs << line << "\r\n";
 
-      for (const auto &e : lgraphics) {
+      for (const auto &e : vgraphics) {
         std::string s = e;
 
         if ((pos = s.rfind('/')) != std::string::npos) {
@@ -420,19 +419,19 @@ bool attach(const std::string &infile,
 
   if (line != "[Events]") return false;
 
-  if (!has_fonts && !lfonts.empty()) {
+  if (!has_fonts && !vfonts.empty()) {
     ofs << "[Fonts]\r\n";
 
-    if (!attach_fonts(ofs, lfonts)) {
+    if (!attach_fonts(ofs, vfonts)) {
       return false;
     }
     ofs << "\r\n";
   }
 
-  if (!has_graphics && !lgraphics.empty()) {
+  if (!has_graphics && !vgraphics.empty()) {
     ofs << "[Graphics]\r\n";
 
-    for (const auto &e : lgraphics) {
+    for (const auto &e : vgraphics) {
       std::string s = e;
 
       if ((pos = s.rfind('/')) != std::string::npos) {
@@ -459,29 +458,101 @@ bool attach(const std::string &infile,
   return true;
 }
 
-} /* namespace end */
+} /* namespace ass end */
 
 
 int main(int argc, char *argv[])
 {
-  /* list */
-  if (ass::extract("test.ass", ass::M_LIST, {}, {})) return 0;
+  const char *arg = "<noarg>";
+  int rv = 1;
 
-  /* extract */
-  //if (ass::extract("test.ass", ass::M_EXTRACT, "out", "test-stripped.ass")) return 0;
+  if (argc < 2) goto JMP_MISS;
 
-  /* attach */
-/*
-  std::vector<std::string> lfonts, lgraphics;
-  lfonts.push_back("out/DejaVuSans-Bold.ttf");
-  lfonts.push_back("out/DejaVuSansMono-Bold.ttf");
-  lfonts.push_back("out/DejaVuSansMono.ttf");
-  lfonts.push_back("out/DejaVuSans.ttf");
-  lfonts.push_back("out/DejaVuSerif-Bold.ttf");
-  lfonts.push_back("out/DejaVuSerif.ttf");
-  if (ass::attach("test-stripped.ass", "test-new.ass", lfonts, lgraphics)) return 0;
-*/
+  /* help */
+  for (int i=1; i < argc; i++) {
+    if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
+      rv = 0;
+      goto JMP_HELP;
+    }
+  }
 
-  return 1;
+  /* list attachments */
+  if (strcmp(argv[1], "l") == 0 || strcmp(argv[1], "list") == 0) {
+    if (argc < 3) goto JMP_MISS;
+    return (ass::extract(argv[2], ass::M_LIST, {}, {}) == true) ? 0 : 1;
+  }
+
+  /* extract attachments */
+  if (strcmp(argv[1], "x") == 0 || strcmp(argv[1], "extract") == 0) {
+    const char *dir = "";
+    const char *stripped = "";
+
+    if (argc < 3) {
+      goto JMP_MISS;
+    } else if (argc > 3) {
+      for (int i=3; i < argc; i++) {
+        if (strncmp(argv[i], "--out=", 6) == 0 && strlen(argv[i]) > 6) {
+          dir = argv[i] + 6;
+        } else if (strncmp(argv[i], "--strip=", 8) == 0 && strlen(argv[i]) > 8) {
+          stripped = argv[i] + 8;
+        } else {
+          arg = argv[i];
+          goto JMP_ERR;
+        }
+      }
+    }
+
+    return (ass::extract(argv[2], ass::M_EXTRACT, dir, stripped) == true) ? 0 : 1;
+  }
+
+  /* strip attachments from .ass file */
+  if (strcmp(argv[1], "s") == 0 || strcmp(argv[1], "strip") == 0) {
+    if (argc < 4) goto JMP_MISS;
+    return (ass::extract(argv[2], ass::M_STRIP, {}, argv[3]) == true) ? 0 : 1;
+  }
+
+  /* attach files */
+  if (strcmp(argv[1], "a") == 0 || strcmp(argv[1], "attach") == 0) {
+    std::vector<std::string> vfonts, vgraphics;
+    std::vector<std::string> *vec = &vfonts;
+
+    if (argc < 6) goto JMP_MISS;
+
+    if (strcmp(argv[4], "-f") != 0 && strcmp(argv[4], "-g") != 0) {
+      arg = argv[4];
+      goto JMP_ERR;
+    }
+
+    for (int i=4; i < argc; i++) {
+      if (strcmp(argv[i], "-f") == 0) {
+        vec = &vfonts;
+      } else if (strcmp(argv[i], "-g") == 0) {
+        vec = &vgraphics;
+      } else {
+        vec->push_back(argv[i]);
+      }
+    }
+
+    return (ass::attach(argv[2], argv[3], vfonts, vgraphics) == true) ? 0 : 1;
+  }
+
+  arg = argv[1];
+
+JMP_ERR:
+  std::cerr << "error: incorrect argument given: " << arg << '\n' << std::endl;
+  goto JMP_HELP;
+
+JMP_MISS:
+  std::cerr << "error: missing arguments\n" << std::endl;
+
+JMP_HELP:
+  std::cout << argv[0] << " -h|--help\n"
+    << argv[0] << " a|attach input.ass output.ass -f fonts [...] -g graphics [...]\n"
+    << argv[0] << " x|extract input.ass [--out=directory] [--strip=output.ass]\n"
+    << argv[0] << " l|list input.ass\n"
+    << argv[0] << " s|strip input.ass output.ass"
+    << std::endl;
+
+  return rv;
 }
 
