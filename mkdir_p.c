@@ -1,6 +1,3 @@
-/* from https://github.com/AppImage/AppImageKit/blob/appimagetool/master/runtime.c
- */
-
 #include <errno.h>
 #include <limits.h>
 #include <stdio.h>
@@ -9,56 +6,64 @@
 #include <sys/types.h>
 
 
-/* mkdir -p implemented in C, needed for https://github.com/AppImage/AppImageKit/issues/333
- * https://gist.github.com/JonathonReinhart/8c0d90191c38af2dcadb102c4e202950 */
-
 int mkdir_p(const char *path)
 {
-    /* Adapted from http://stackoverflow.com/a/2336245/119527 */
-    const size_t len = strlen(path);
-    char _path[PATH_MAX];
-    char *p; 
+  char buf[PATH_MAX] = {0};
+  const char *p;
+  char *pb;
+  char peek;
 
-    errno = 0;
+  /* invalid argument */
+  if (!path || *path == 0) {
+    errno = EINVAL;
+    return -1;
+  }
 
-    /* Copy string so its mutable */
-    if (len > sizeof(_path)-1) {
-        errno = ENAMETOOLONG;
-        return -1; 
-    }   
-    strcpy(_path, path);
+  /* path too long */
+  if (strlen(path) >= PATH_MAX) {
+    errno = ENAMETOOLONG;
+    return -1;
+  }
 
-    /* Iterate the string */
-    for (p = _path + 1; *p; p++) {
-        if (*p == '/') {
-            /* Temporarily truncate */
-            *p = '\0';
+  buf[0] = path[0];
+  pb = buf;
 
-            if (mkdir(_path, S_IRWXU) != 0) {
-                if (errno != EEXIST)
-                    return -1; 
-            }
+  /* copy path and call mkdir() on each path separator */
+  for (p = path + 1; *p; p++) {
+    if (*p == '/') {
+      if ((peek = *(p+1)) == '/' || peek == 0) {
+        /* skip multiple or trailing slashes */
+        continue;
+      }
+      *(pb+1) = 0;
 
-            *p = '/';
-        }
-    }   
-
-    if (mkdir(_path, S_IRWXU) != 0) {
-        if (errno != EEXIST)
-            return -1; 
-    }   
-
-    return 0;
-}
-
-int main(int argc, char **argv)
-{
-    if (argc != 2)
-    {
-        fprintf(stderr, "usage: %s PATH\n", argv[0]);
-        return 1;
+      if (mkdir(buf, S_IRWXU) != 0 && errno != EEXIST) {
+        /* ignore "directory exists" error */
+        return -1;
+      }
     }
+    *++pb = *p;
+  }
+  *++pb = 0;
 
-    return mkdir_p(argv[1]);
+  if (mkdir(buf, S_IRWXU) != 0 && errno != EEXIST) {
+    return -1;
+  }
+
+  errno = 0;
+  return 0;
 }
 
+int main()
+{
+  const char *path = "/tmp/a/b/c";
+  printf("create path: %s\n", path);
+
+  if (mkdir_p(path) == -1) {
+    perror("mkdir_p()");
+    return 1;
+  }
+
+  puts("success!");
+  return 0;
+}
