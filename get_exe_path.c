@@ -5,8 +5,9 @@
 #elif defined(_WIN32)
 #  include <windows.h>
 #elif defined(__APPLE__)
-#  include <limits.h>
+#  include <sys/syslimits.h>
 #  include <mach-o/dyld.h>
+#  include <string.h>
 #else
 #  include <limits.h>
 #  define GET_EXE_PATH_INLINE inline
@@ -32,22 +33,18 @@ char *get_exe_path()
   path[len] = '\0';
   return path;
 #elif defined(_WIN32)
-  DWORD len = 4096; //32*1024;
+  int len = 32*1024;
   char *buf = (char *)malloc(len);
-  if (GetModuleFileNameA(NULL, buf, len) > 0 && GetLastError() == 0) {
+  if (GetModuleFileNameA(NULL, buf, len-1) > 0 && GetLastError() == 0) {
     return buf;
   }
   free(buf);
   return NULL;
 #elif defined(__APPLE__)
-  char *path;
-  char buf[4096];
-  uint32_t len = sizeof(buf);
+  char buf[PATH_MAX];
+  uint32_t len = sizeof(buf)-1;
   if (_NSGetExecutablePath(buf, &len) != 0) return NULL;
-  path = (char *)malloc(sizeof(buf));
-  if (realpath(buf, path) != NULL) return path;
-  free(path);
-  return NULL;
+  return strdup(buf);
 #else
   return realpath("/proc/self/exe", NULL);
 #endif
