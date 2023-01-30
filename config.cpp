@@ -1,6 +1,6 @@
 /**
 Simple config/ini reader class.
-Format is "key=value", value can be empty, spaces are allowed, no groups.
+Format is "key=value", value can be empty, spaces are allowed.
 Comments must be on separate lines beginning with ; or # (leading
 spaces are okay).
 The class will keep comments but delete duplicate keys and set the
@@ -28,16 +28,18 @@ key3 =
 class conf
 {
 private:
+  /* needs better implementation to store groups, maybe nested std::vector? */
   typedef struct {
+    std::string group;
     std::string key;
     std::string value;
-  } pair_t;
+  } entry_t;
 
-  std::vector<pair_t> m_lines;
+  std::vector<entry_t> m_lines;
   bool m_ignore_errors = false;
   int m_err_line = 0;
 
-  bool read_line(std::string &line, int i)
+  bool read_line(std::string &line, std::string &group, int i)
   {
     /* clear spaces in front and back */
     while (isspace(line.back())) line.pop_back();
@@ -46,22 +48,47 @@ private:
     if (line.empty()) {
       /* empty line */
       if (m_lines.size() > 0 && !(m_lines.back().key.empty() && m_lines.back().value.empty())) {
-        m_lines.push_back({});
+        m_lines.push_back({ group, {}, {} });
       }
       return true;
     } else if (line.front() == '#' || line.front() == ';') {
       /* comment */
-      m_lines.push_back({"", line});
+      m_lines.push_back({ group, line, {} });
+      return true;
+    } else if (line == "[.]") {
+      /* global group */
+      group = "";
+      return true;
+    }
+
+    /* group entry */
+    if (line.front() == '[' && line.back() == ']') {
+      std::smatch gm;
+      std::regex greg("\\[([A-Za-z][A-Za-z0-9_]*)\\]");
+
+      if (!std::regex_match(line, gm, greg) || gm.size() != 2) {
+        if (m_ignore_errors) return true;
+        m_err_line = i;
+        return false;
+      }
+
+      for (auto &g : m_lines) {
+        if (g.group == gm[1]) {
+          group = g.group;
+          return true;
+        }
+      }
+
+      group = gm[1];
       return true;
     }
 
     std::smatch m;
     std::regex reg("([A-Za-z][A-Za-z0-9_]*)[?|\\s]*=[?|\\s]*(.*)");
 
+    /* key=value entry */
     if (!std::regex_match(line, m, reg) || m.size() != 3) {
-      if (m_ignore_errors) {
-        return true;
-      }
+      if (m_ignore_errors) return true;
       m_err_line = i;
       return false;
     }
@@ -70,14 +97,16 @@ private:
     bool found = false;
 
     for (auto &e : m_lines) {
-      if (e.key == m[1]) {
+      if (e.group == group && e.key == m[1]) {
         e.value = m[2];
         found = true;
         break;
       }
     }
 
-    if (!found) m_lines.push_back({ m[1], m[2] });
+    if (!found) {
+      m_lines.push_back({ group, m[1], m[2] });
+    }
 
     return true;
   }
@@ -88,7 +117,7 @@ public:
 
   bool load_string(const std::string &s_input)
   {
-    std::string line;
+    std::string line, group;
     int i = 1;
 
     m_err_line = 0;
@@ -100,7 +129,7 @@ public:
         continue;
       }
 
-      if (!read_line(line, i)) return false;
+      if (!read_line(line, group, i)) return false;
 
       line.clear();
       i++;
@@ -111,7 +140,7 @@ public:
 
   bool load_file(const std::string &file)
   {
-    std::string line;
+    std::string line, group;
     std::fstream fs(file);
 
     m_err_line = 0;
@@ -120,7 +149,7 @@ public:
     if (!fs.is_open()) return false;
 
     for (int i=1; std::getline(fs, line); i++) {
-      if (!read_line(line, i)) return false;
+      if (!read_line(line, group, i)) return false;
     }
 
     return true;
@@ -129,6 +158,12 @@ public:
   void print()
   {
     for (const auto &e : m_lines) {
+      if (e.group.empty()) {
+        std::cout << "[.] ";
+      } else {
+        std::cout << '[' << e.group << "] ";
+      }
+
       if (e.key.empty()) {
         std::cout << e.value << std::endl;
       } else {
@@ -139,6 +174,7 @@ public:
 
   size_t to_string(std::string &s)
   {
+/*
     s.clear();
 
     for (const auto &e : m_lines) {
@@ -147,16 +183,16 @@ public:
       }
       s += e.value + "\n";
     }
-
+*/
     return s.size();
   }
 
   /* get/set string */
 
-  bool get(const std::string &key, std::string &value)
+  bool get(const std::string &group, const std::string &key, std::string &value)
   {
     for (const auto &e : m_lines) {
-      if (e.key == key) {
+      if (e.group == group && e.key == key) {
         value = e.value;
         return true;
       }
@@ -164,24 +200,24 @@ public:
     return false;
   }
 
-  void set(const std::string &key, const std::string &value)
+  void set(const std::string &group, const std::string &key, const std::string &value)
   {
     for (auto &e : m_lines) {
-      if (e.key == key) {
+      if (e.group == group && e.key == key) {
         e.value = value;
         return;
       }
     }
-    m_lines.push_back({ key, value });
+
+    m_lines.push_back({ group, key, value });
   }
 
   /* get/set boolean */
-
-  bool get_bool(const std::string &key, bool &value)
+  bool get_bool(const std::string &group, const std::string &key, bool &value)
   {
     std::string s;
 
-    if (!get(key, s)) return false;
+    if (!get(group, key, s)) return false;
 
     if (s == "0" || strcasecmp(s.c_str(), "false") == 0) {
       value = false;
@@ -194,17 +230,17 @@ public:
     return true;
   }
 
-  void set_bool(const std::string &key, bool value) {
-    set(key, value ? "1" : "0");
+  void set_bool(const std::string &group, const std::string &key, bool value) {
+    set(group, key, value ? "1" : "0");
   }
 
   /* get/set long integer */
 
-  bool get_long(const std::string &key, long &value)
+  bool get_long(const std::string &group, const std::string &key, long &value)
   {
     std::string s;
 
-    if (!get(key, s) || s.empty()) return false;
+    if (!get(group, key, s) || s.empty()) return false;
 
     try {
       value = std::stol(s);
@@ -219,19 +255,19 @@ public:
     return true;
   }
 
-  void set_long(const std::string &key, long value) {
+  void set_long(const std::string &group, const std::string &key, long value) {
     char buf[64];
     sprintf(buf, "%ld", value);
-    set(key, buf);
+    set(group, key, buf);
   }
 
   /* get/set float point value */
 
-  bool get_double(const std::string &key, double &value)
+  bool get_double(const std::string &group, const std::string &key, double &value)
   {
     std::string s;
 
-    if (!get(key, s) || s.empty()) return false;
+    if (!get(group, key, s) || s.empty()) return false;
 
     try {
       value = std::stod(s);
@@ -246,17 +282,16 @@ public:
     return true;
   }
 
-  void set_double(const std::string &key, double value)
+  void set_double(const std::string &group, const std::string &key, double value)
   {
     char buf[64];
     sprintf(buf, "%.10f", value);
 
-    std::string s = buf;
-    while (s.back() == '0') s.pop_back();
-    if (s.back() == '.') s.push_back('0');
+    //std::string s = buf;
+    //while (s.back() == '0') s.pop_back();
+    //s.push_back('0');
 
-    //std::cout << "SET " << key << " TO " << s << std::endl;
-    set(key, s);
+    set(group, key, buf);
   }
 
   /* ignore malformatted lines */
