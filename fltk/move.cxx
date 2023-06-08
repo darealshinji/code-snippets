@@ -2,66 +2,59 @@
 #include <FL/Fl_Box.H>
 #include <FL/Fl_Window.H>
 #include <FL/fl_draw.H>
-#include <FL/filename.H>
 
-#include <iostream>
 
-static int event_x_pos, event_y_pos;
-
-class move_box : public Fl_Box
+class movebox : public Fl_Box
 {
-  public:
+private:
 
-    move_box(int X, int Y, int W, int H, const char *L=0)
-      : Fl_Box(X, Y, W, H, L) { }
+    int m_event_x = 0;
+    int m_event_y = 0;
 
-    virtual ~move_box() { }
+public:
 
-    int handle(int event);
+    movebox(int X, int Y, int W, int H, const char *L=0)
+    : Fl_Box(X, Y, W, H, L) {}
+
+    virtual ~movebox() {}
+
+protected:
+
+    int handle(int e)
+    {
+        int rv = Fl_Box::handle(e);
+
+        switch (e) {
+            case FL_PUSH:
+                fl_cursor(FL_CURSOR_MOVE);
+                m_event_x = Fl::event_x();
+                m_event_y = Fl::event_y();
+                rv = e;  /* must be non-zero */
+                break;
+            case FL_DRAG:
+                window()->position(
+                    Fl::event_x_root() - m_event_x,
+                    Fl::event_y_root() - m_event_y);
+                break;
+            case FL_RELEASE:
+                fl_cursor(FL_CURSOR_DEFAULT);
+                break;
+            default:
+                break;
+        }
+
+        return rv;
+    }
 };
 
-int move_box::handle(int event)
+
+int main()
 {
-  int ret = Fl_Box::handle(event);
-  switch (event)
-  {
-    case FL_PUSH:
-      fl_cursor(FL_CURSOR_MOVE);
-      event_x_pos = Fl::event_x();
-      event_y_pos = Fl::event_y();
-      ret = event;  /* must be non-zero */
-      break;
-    case FL_DRAG:
-      do_callback();
-      break;
-    case FL_RELEASE:
-      fl_cursor(FL_CURSOR_DEFAULT);
-      break;
-  }
-  return ret;
+    Fl_Window win(200, 200, "move test");
+    movebox box(40, 40, 120, 120, "click here\nand move\nwindow around");
+    box.box(FL_FLAT_BOX);
+    box.color(FL_YELLOW);
+    win.end();
+    win.show();
+    return Fl::run();
 }
-
-static void move_box_cb(Fl_Widget *, void *v)
-{
-  Fl_Window *w = (Fl_Window *)v;
-  int x = Fl::event_x_root() - event_x_pos;
-  int y = Fl::event_y_root() - event_y_pos;
-  w->position(x, y);
-}
-
-
-int main(int argc, char **argv)
-{
-  Fl_Window *win = new Fl_Window(200, 200, "move test");
-  {
-    move_box *b = new move_box(40, 40, 120, 120, "click here\nand move\nwindow around");
-    b->box(FL_FLAT_BOX);
-    b->color(FL_YELLOW);
-    b->callback(move_box_cb, win);
-  }
-  win->end();
-  win->show();
-
-  return Fl::run();
-}
-
