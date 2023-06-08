@@ -22,14 +22,11 @@ protected:
 
     int handle(int e)
     {
-        int rv = Fl_Box::handle(e);
-
         switch (e) {
             case FL_PUSH:
                 fl_cursor(FL_CURSOR_MOVE);
                 m_event_x = Fl::event_x();
                 m_event_y = Fl::event_y();
-                rv = e;  /* must be non-zero */
                 break;
             case FL_DRAG:
                 window()->position(
@@ -43,7 +40,7 @@ protected:
                 break;
         }
 
-        return rv;
+        return e;
     }
 };
 
