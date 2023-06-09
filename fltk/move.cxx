@@ -27,7 +27,7 @@ protected:
                 fl_cursor(FL_CURSOR_MOVE);
                 m_event_x = Fl::event_x();
                 m_event_y = Fl::event_y();
-                break;
+                return e;  /* return non-zero */
             case FL_DRAG:
                 window()->position(
                     Fl::event_x_root() - m_event_x,
@@ -40,7 +40,7 @@ protected:
                 break;
         }
 
-        return e;
+        return Fl_Box::handle(e);
     }
 };
 
