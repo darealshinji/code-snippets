@@ -1,3 +1,5 @@
+/* possible alternative: call the notify-send command */
+
 #include <libnotify/notify.h>
 
 int send_notification(const char *app_name, const char *summary, const char *body, const char *icon)
