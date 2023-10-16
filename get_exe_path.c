@@ -1,6 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#if defined(__linux__) && !defined(HAS_PROC_SELF_EXE)
+#define HAS_PROC_SELF_EXE
+#endif
+
 /* https://github.com/gpakosz/whereami */
 #ifndef HAS_PROC_SELF_EXE
 #include "whereami.c"
