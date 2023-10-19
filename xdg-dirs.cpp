@@ -47,7 +47,7 @@ private:
             return true;
         }
 
-        char *p = getenv("HOME");
+        const char *p = getenv("HOME");
         if (!p) return false;
 
         m_home = p;
@@ -62,6 +62,34 @@ public:
     virtual ~xdg() {}
 
 
+    /* load default config file:
+     * either "$XDG_CONFIG_HOME/user-dirs.dirs" or fall back
+     * to "$HOME/.config/user-dirs.dirs" */
+    bool load()
+    {
+        std::string file;
+        const char *p = getenv("XDG_CONFIG_HOME");
+
+        if (p) {
+            file = p;
+
+            if (file.back() == '/') {
+                file += "user-dirs.dirs";
+            } else {
+                file += "/user-dirs.dirs";
+            }
+        } else {
+            if (!get_home()) {
+                return false;
+            }
+            file = m_home + "/.config/user-dirs.dirs";
+        }
+
+        return load(file);
+    }
+
+
+    /* load a given user-dirs.dirs file */
     bool load(const std::string &file)
     {
         clear();
@@ -78,7 +106,7 @@ public:
         std::string line;
 
         while (std::getline(ifs, line)) {
-            struct dir path;
+            struct dir p;
             std::smatch m;
 
             /* comment */
@@ -90,56 +118,56 @@ public:
                 continue;
             }
 
-            path.var = m[1];
-            path.path = m[2];
+            p.var = m[1];
+            p.path = m[2];
 
-            if (path.var.empty() || path.path.empty()) {
+            if (p.var.empty() || p.path.empty()) {
                 continue;
             }
 
             /* strip trailing slashes */
-            if (path.path.back() == '/') {
-                while (path.path.back() == '/') {
-                    path.path.pop_back();
+            if (p.path.back() == '/') {
+                while (p.path.back() == '/') {
+                    p.path.pop_back();
                 }
 
                 /* path was only slashes */
-                if (path.path.empty()) {
-                    path.path = "/";
+                if (p.path.empty()) {
+                    p.path = "/";
                 }
             }
 
             /* path equals $HOME */
-            if (path.path == "$HOME") {
+            if (p.path == "$HOME") {
                 continue;
             }
 
-            if (path.path.starts_with("$HOME")) {
+            if (p.path.starts_with("$HOME")) {
                 /* replace $HOME variable */
                 if (!get_home()) {
                     return false;
                 }
-                path.path.replace(0, 5, m_home);
-            } else if (!path.path.starts_with('/')) {
+                p.path.replace(0, 5, m_home);
+            } else if (!p.path.starts_with('/')) {
                 /* path must be absolute */
                 continue;
             }
 
             /* path equals $HOME */
-            if (get_home() && path.path == m_home) {
+            if (get_home() && p.path == m_home) {
                 continue;
             }
 
             /* get the basename */
-            auto pos = path.path.rfind('/');
+            auto pos = p.path.rfind('/');
 
             if (pos == std::string::npos) {
                 continue;
             }
 
-            path.basename = path.path.substr(pos + 1);
+            p.basename = p.path.substr(pos + 1);
 
-            if (path.basename.empty()) {
+            if (p.basename.empty()) {
                 continue;
             }
 
@@ -147,15 +175,15 @@ public:
             bool found = false;
 
             for (auto &e : m_paths) {
-                if (e.var == path.var) {
-                    e.path = path.path;
-                    e.basename = path.basename;
+                if (e.var == p.var) {
+                    e.path = p.path;
+                    e.basename = p.basename;
                     found = true;
                 }
             }
 
             if (!found) {
-                m_paths.push_back(path);
+                m_paths.push_back(p);
             }
         }
 
@@ -170,17 +198,7 @@ public:
     }
 
 
-    bool load()
-    {
-        if (!get_home()) {
-            return false;
-        }
-
-        /* load default config file */
-        return load(m_home + "/.config/user-dirs.dirs");
-    }
-
-
+    /* load user-dirs.locale */
     std::string locale()
     {
         if (!m_locale.empty()) {
@@ -263,6 +281,12 @@ public:
         get_home();
         return m_home;
     }
+
+
+    std::string file() const
+    {
+        return m_config;
+    }
 };
 
 
@@ -274,6 +298,7 @@ int main()
         return 1;
     }
 
+    std::cout << "loaded config file: " << dirs.file() << std::endl;
     std::cout << "desktop == " << dirs.path("DESKTOP") << std::endl;
     std::cout << "locale: " << dirs.locale() << std::endl;
 
